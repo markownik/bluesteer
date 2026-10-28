@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  swift:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools
+        run: swift build -c release
+        working-directory: tools
+      - name: Test protocol package
+        run: swift test
+        working-directory: packages/BlueSteerProtocol
+      - name: Build host
+        run: swift build
+        working-directory: apps/host
+
+  dart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Test protocol package
+        run: dart pub get && dart test
+        working-directory: packages/bluesteer_protocol_dart
+      - name: Analyze remote
+        run: flutter pub get && flutter analyze
+        working-directory: apps/remote
+
+  proto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check generated code is current
+        run: tools/gen-proto.sh --check

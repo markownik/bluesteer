@@ -48,3 +48,21 @@ Thumbs.db
 *.mov
 *.wmv
 
+
+# Swift / SwiftPM / Xcode
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.g.dart
+
+# BlueSteer recordings and bench output
+*.rec

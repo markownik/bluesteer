@@ -1,0 +1,205 @@
+// BlueSteer wire protocol. Version history in CHANGELOG.md, prose in SPEC.md.
+//
+// Every message travels inside a Noise transport message (see SPEC.md §3).
+// Field numbers are stable: never reuse or renumber.
+syntax = "proto3";
+
+package bluesteer.v1;
+
+option swift_prefix = "BS";
+
+// ---------------------------------------------------------------------------
+// Envelope
+// ---------------------------------------------------------------------------
+
+message Envelope {
+  oneof body {
+    // Host → Remote
+    HostHello host_hello = 1;
+    SessionList session_list = 2;
+    SessionState session_state = 3;
+    TermSnapshot term_snapshot = 4;
+    TermOutput term_output = 5;
+    Scrollback scrollback = 6;
+    Notification notification = 7;
+    Ack ack = 8;
+    Projects projects = 9;
+
+    // Remote → Host
+    ListSessions list_sessions = 20;
+    Subscribe subscribe = 21;
+    Unsubscribe unsubscribe = 22;
+    NewSession new_session = 23;
+    AttachBackground attach_background = 24;
+    TermInput term_input = 25;
+    Resize resize = 26;
+    FetchScrollback fetch_scrollback = 27;
+    StopSession stop_session = 28;
+    Ping ping = 29;
+    Pong pong = 30;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Host → Remote
+// ---------------------------------------------------------------------------
+
+message HostHello {
+  uint32 protocol_version = 1;
+  string host_name = 2;
+  string host_version = 3;
+  repeated string capabilities = 4;
+}
+
+enum SessionSource {
+  SESSION_SOURCE_UNSPECIFIED = 0;
+  SESSION_SOURCE_HOST_SPAWNED = 1;   // started by the host app
+  SESSION_SOURCE_WRAPPED = 2;        // `bluesteer run ...` in the user's terminal
+  SESSION_SOURCE_ATTACHED = 3;       // `claude attach <id>` run by the host
+  SESSION_SOURCE_DISCOVERED = 4;     // seen via `claude agents --json`, not bridged
+}
+
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED = 0;
+  SESSION_STATUS_BUSY = 1;
+  SESSION_STATUS_WAITING_INPUT = 2;
+  SESSION_STATUS_WAITING_PERMISSION = 3;
+  SESSION_STATUS_IDLE = 4;
+  SESSION_STATUS_EXITED = 5;
+}
+
+message SessionState {
+  string session_id = 1;
+  SessionSource source = 2;
+  string command = 3;
+  string cwd = 4;
+  string title = 5;
+  SessionStatus status = 6;
+  uint32 rows = 7;
+  uint32 cols = 8;
+  int32 exit_code = 9;      // valid when status == EXITED
+}
+
+message SessionList {
+  repeated SessionState sessions = 1;
+}
+
+// Full screen state as VT sequences the remote feeds to its emulator verbatim.
+message TermSnapshot {
+  string session_id = 1;
+  uint64 seq = 2;           // output sequence this snapshot corresponds to
+  uint32 rows = 3;
+  uint32 cols = 4;
+  bytes vt = 5;             // deflate-compressed when `compressed` is true
+  bool compressed = 6;
+}
+
+// Raw PTY output following the last snapshot or output message.
+message TermOutput {
+  string session_id = 1;
+  uint64 seq = 2;           // monotonically increasing per session
+  bytes data = 3;           // part of a per-session deflate stream when `compressed`
+  bool compressed = 4;
+}
+
+message Scrollback {
+  string session_id = 1;
+  uint32 from_line = 2;
+  repeated bytes lines = 3; // each line as VT text with SGR
+  uint32 total_lines = 4;
+}
+
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_PERMISSION_PROMPT = 1;
+  NOTIFICATION_TYPE_IDLE_PROMPT = 2;
+  NOTIFICATION_TYPE_TURN_FINISHED = 3;
+  NOTIFICATION_TYPE_SESSION_ENDED = 4;
+  NOTIFICATION_TYPE_OTHER = 5;
+}
+
+message Notification {
+  string session_id = 1;
+  NotificationType type = 2;
+  string text = 3;
+}
+
+message Ack {
+  uint64 cmd_id = 1;
+  bool ok = 2;
+  string error = 3;
+}
+
+message Projects {
+  repeated string recent_cwds = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Remote → Host. Every command carries cmd_id so the host can Ack it.
+// ---------------------------------------------------------------------------
+
+message ListSessions {
+  uint64 cmd_id = 1;
+}
+
+message Subscribe {
+  uint64 cmd_id = 1;
+  string session_id = 2;
+  uint32 rows = 3;
+  uint32 cols = 4;
+}
+
+message Unsubscribe {
+  uint64 cmd_id = 1;
+  string session_id = 2;
+}
+
+message NewSession {
+  uint64 cmd_id = 1;
+  string preset = 2;              // e.g. "claude", "copilot", "shell", "custom"
+  string cwd = 3;
+  repeated string args = 4;       // extra arguments for the preset's command
+  uint32 rows = 5;
+  uint32 cols = 6;
+  bool low_bandwidth = 7;         // e.g. adds --ax-screen-reader for Claude
+}
+
+message AttachBackground {
+  uint64 cmd_id = 1;
+  string claude_session_id = 2;
+  uint32 rows = 3;
+  uint32 cols = 4;
+}
+
+message TermInput {
+  string session_id = 1;
+  bytes data = 2;
+}
+
+message Resize {
+  uint64 cmd_id = 1;
+  string session_id = 2;
+  uint32 rows = 3;
+  uint32 cols = 4;
+}
+
+message FetchScrollback {
+  uint64 cmd_id = 1;
+  string session_id = 2;
+  uint32 from_line = 3;
+  uint32 count = 4;
+}
+
+message StopSession {
+  uint64 cmd_id = 1;
+  string session_id = 2;
+  int32 signal = 3;               // POSIX signal number, 0 = SIGTERM
+}
+
+message Ping {
+  uint64 nonce = 1;
+}
+
+message Pong {
+  uint64 nonce = 1;
+}
