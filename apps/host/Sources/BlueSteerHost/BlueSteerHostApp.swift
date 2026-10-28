@@ -15,12 +15,22 @@ struct BlueSteerHostApp: App {
                 c.autoConfirmPairing = true
                 print("PAIRING \(c.beginPairing())")
             }
+            // Development aid: `BlueSteerHost --login-item on|off|status` drives SMAppService and exits.
+            if let i = CommandLine.arguments.firstIndex(of: "--login-item"), i + 1 < CommandLine.arguments.count {
+                setvbuf(stdout, nil, _IOLBF, 0)
+                let want = CommandLine.arguments[i + 1]
+                if want == "on" || want == "off" {
+                    do { try LoginItem.setEnabled(want == "on") } catch { print("LOGIN ITEM error \(error)") }
+                }
+                print("LOGIN ITEM available=\(LoginItem.isAvailable) enabled=\(LoginItem.isEnabled) requiresApproval=\(LoginItem.requiresApproval)")
+                exit(0)
+            }
             return c
         } catch { return nil }
     }()
 
     var body: some Scene {
-        MenuBarExtra("BlueSteer", systemImage: "antenna.radiowaves.left.and.right") {
+        MenuBarExtra {
             if let controller {
                 MenuContent(controller: controller)
             } else {
@@ -28,12 +38,32 @@ struct BlueSteerHostApp: App {
             }
             Divider()
             Button("Quit BlueSteer") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
+        } label: {
+            Image(nsImage: Self.menuBarIcon)
         }
         Window("Pair a remote", id: "pairing") {
             if let controller { PairingView(controller: controller) }
         }
         .windowResizability(.contentSize)
     }
+}
+
+extension BlueSteerHostApp {
+    /// The brand glyph (assets/icon/menubar.svg) as a template image, so it follows the menu bar's appearance.
+    static let menuBarIcon: NSImage = {
+        let image = NSImage()
+        for name in ["MenuBarIcon", "MenuBarIcon@2x"] {
+            if let url = Bundle.module.url(forResource: name, withExtension: "png"), let data = try? Data(contentsOf: url),
+               let rep = NSBitmapImageRep(data: data) {
+                rep.size = NSSize(width: 18, height: 18)
+                image.addRepresentation(rep)
+            }
+        }
+        if image.representations.isEmpty, let fallback = NSImage(systemSymbolName: "terminal", accessibilityDescription: "BlueSteer") { return fallback }
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
+        return image
+    }()
 }
 
 struct MenuContent: View {

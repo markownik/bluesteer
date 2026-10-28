@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Android adaptive icon foreground: the glyph inside the 66% safe zone, no background. -->
+  <g transform="translate(512 512) scale(0.62) translate(-512 -512)">
+    <rect x="152" y="232" width="720" height="560" rx="76" fill="none" stroke="#E6EDF3" stroke-width="52"/>
+    <g fill="none" stroke="#0A84FF" stroke-width="54" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M380 362 V662"/>
+      <path d="M300 437 L460 587 L380 662"/>
+      <path d="M300 587 L460 437 L380 362"/>
+    </g>
+    <path d="M520 662 H660" fill="none" stroke="#E6EDF3" stroke-width="54" stroke-linecap="round"/>
+  </g>
+</svg>

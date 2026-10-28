@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- BlueSteer: a terminal window whose prompt is the Bluetooth rune. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="200" fill="#0B1220"/>
+  <!-- window frame -->
+  <rect x="152" y="232" width="720" height="560" rx="76" fill="none" stroke="#E6EDF3" stroke-width="52"/>
+  <!-- Bluetooth rune as the prompt -->
+  <g fill="none" stroke="#0A84FF" stroke-width="54" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M380 362 V662"/>
+    <path d="M300 437 L460 587 L380 662"/>
+    <path d="M300 587 L460 437 L380 362"/>
+  </g>
+  <!-- cursor -->
+  <path d="M520 662 H660" fill="none" stroke="#E6EDF3" stroke-width="54" stroke-linecap="round"/>
+</svg>

@@ -9,11 +9,17 @@ IDENTITY="-"   # ad-hoc by default
 if [[ "${1:-}" == "--sign" ]]; then IDENTITY="$2"; fi
 
 swift build -c release --product BlueSteerHost
-BIN=$(swift build -c release --product BlueSteerHost --show-bin-path)/BlueSteerHost
+swift build -c release --product bluesteer
+BINDIR=$(swift build -c release --product BlueSteerHost --show-bin-path)
 APP=../../build/BlueSteer.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-cp "$BIN" "$APP/Contents/MacOS/BlueSteerHost"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$BINDIR/BlueSteerHost" "$APP/Contents/MacOS/BlueSteerHost"
+# The command line tool ships next to the app binary; the host symlinks it for the hooks.
+cp "$BINDIR/bluesteer" "$APP/Contents/MacOS/bluesteer"
+# SwiftPM resource bundle (menu-bar icon) and the app icon.
+cp -R "$BINDIR"/BlueSteerHostApp_BlueSteerHost.bundle "$APP/Contents/Resources/" 2>/dev/null || true
+cp ../../assets/icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -22,6 +28,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>BlueSteer</string>
   <key>CFBundleIdentifier</key><string>dev.bluesteer.host</string>
   <key>CFBundleExecutable</key><string>BlueSteerHost</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.0.1</string>
   <key>CFBundleVersion</key><string>1</string>
