@@ -19,6 +19,11 @@ jobs:
       - name: Build host
         run: swift build
         working-directory: apps/host
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Cross-language SecureChannel interop
+        run: tools/interop-test.sh
 
   dart:
     runs-on: ubuntu-latest
@@ -38,5 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install protoc plugins
+        run: |
+          sudo apt-get install -y protobuf-compiler
+          dart pub global activate protoc_plugin
+          # protoc-gen-swift from the swift-protobuf release
+          curl -fsSL https://github.com/apple/swift-protobuf/releases/download/1.28.2/protoc-gen-swift-linux-x86_64.tar.gz | tar xz -C /usr/local/bin || true
       - name: Check generated code is current
         run: tools/gen-proto.sh --check

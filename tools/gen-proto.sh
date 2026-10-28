@@ -11,12 +11,12 @@ mkdir -p "$SWIFT_OUT" "$DART_OUT"
 
 if [[ "${1:-}" == "--check" ]]; then
   tmp=$(mktemp -d)
-  protoc -I protocol --swift_out="$tmp" --dart_out="$tmp" protocol/bluesteer.proto
+  protoc -I protocol --swift_opt=Visibility=Public --swift_out="$tmp" --dart_out="$tmp" protocol/bluesteer.proto
   diff "$tmp/bluesteer.pb.swift" "$SWIFT_OUT/bluesteer.pb.swift"
   for f in "$tmp"/*.dart; do diff "$f" "$DART_OUT/$(basename "$f")"; done
   echo "generated code is current"
   exit 0
 fi
 
-protoc -I protocol --swift_out="$SWIFT_OUT" --dart_out="$DART_OUT" protocol/bluesteer.proto
+protoc -I protocol --swift_opt=Visibility=Public --swift_out="$SWIFT_OUT" --dart_out="$DART_OUT" protocol/bluesteer.proto
 echo "generated into $SWIFT_OUT and $DART_OUT"
