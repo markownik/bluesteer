@@ -19,6 +19,8 @@ class SessionsPage extends StatefulWidget {
 
 class _SessionsPageState extends State<SessionsPage> {
   final _sessions = <String, SessionState>{};
+  List<String> _projects = const [];
+  String? _lastCwd;
   StreamSubscription<Envelope>? _sub;
   int _cmdId = 1000;
 
@@ -35,6 +37,8 @@ class _SessionsPageState extends State<SessionsPage> {
         });
       } else if (e.hasSessionState()) {
         setState(() => _sessions[e.sessionState.sessionId] = e.sessionState);
+      } else if (e.hasProjects()) {
+        setState(() => _projects = e.projects.recentCwds);
       }
     });
     widget.session.send(Envelope()..listSessions = (ListSessions()..cmdId = Int64(_cmdId++)));
@@ -47,22 +51,20 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Future<void> _newSession() async {
-    final preset = await showDialog<String>(
+    final cwdController = TextEditingController(text: _lastCwd ?? _projects.firstOrNull ?? '');
+    final result = await showDialog<(String, String)>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('New session'),
-        children: [
-          for (final p in const [('claude', 'Claude Code'), ('copilot', 'Copilot CLI'), ('shell', 'Shell')])
-            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, p.$1), child: Text(p.$2)),
-        ],
-      ),
+      builder: (ctx) => _NewSessionDialog(projects: _projects, cwdController: cwdController),
     );
-    if (preset == null || !mounted) return;
+    if (result == null || !mounted) return;
+    final (preset, cwd) = result;
+    _lastCwd = cwd;
     final size = MediaQuery.of(context).size;
     await widget.session.send(Envelope()
       ..newSession = (NewSession()
         ..cmdId = Int64(_cmdId++)
         ..preset = preset
+        ..cwd = cwd
         ..rows = (size.height / 22).floor().clamp(10, 60)
         ..cols = (size.width / 7).floor().clamp(40, 200)));
   }
@@ -86,12 +88,67 @@ class _SessionsPageState extends State<SessionsPage> {
                   ListTile(
                     leading: Icon(s.status == SessionStatus.SESSION_STATUS_EXITED ? Icons.stop_circle_outlined : Icons.terminal),
                     title: Text(s.title.isEmpty ? s.command : s.title),
-                    subtitle: Text('${s.cwd}  ·  ${s.status.name.replaceFirst('SESSION_STATUS_', '').toLowerCase()}  ·  ${s.cols}×${s.rows}'),
+                    subtitle: Text('${s.cwd}  ·  ${s.status.name.replaceFirst('SESSION_STATUS_', '').toLowerCase()}'
+                        '${s.source == SessionSource.SESSION_SOURCE_WRAPPED ? '  ·  your terminal' : ''}  ·  ${s.cols}×${s.rows}'),
                     onTap: () => _open(s),
                   ),
               ],
             ),
       floatingActionButton: FloatingActionButton(onPressed: _newSession, child: const Icon(Icons.add)),
+    );
+  }
+}
+
+class _NewSessionDialog extends StatefulWidget {
+  const _NewSessionDialog({required this.projects, required this.cwdController});
+  final List<String> projects;
+  final TextEditingController cwdController;
+
+  @override
+  State<_NewSessionDialog> createState() => _NewSessionDialogState();
+}
+
+class _NewSessionDialogState extends State<_NewSessionDialog> {
+  String _preset = 'claude';
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New session'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'claude', label: Text('Claude')),
+              ButtonSegment(value: 'copilot', label: Text('Copilot')),
+              ButtonSegment(value: 'shell', label: Text('Shell')),
+            ],
+            selected: {_preset},
+            onSelectionChanged: (v) => setState(() => _preset = v.first),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: widget.cwdController,
+            decoration: const InputDecoration(labelText: 'Project directory', isDense: true),
+          ),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 4, children: [
+            for (final p in widget.projects)
+              ActionChip(
+                label: Text(p.split('/').last, style: const TextStyle(fontSize: 12)),
+                tooltip: p,
+                onPressed: () => widget.cwdController.text = p,
+              ),
+          ]),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, (_preset, widget.cwdController.text.trim())),
+          child: const Text('Start'),
+        ),
+      ],
     );
   }
 }

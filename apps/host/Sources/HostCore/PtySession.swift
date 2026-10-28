@@ -1,38 +1,28 @@
 import BlueSteerProtocol
 import Darwin
 import Foundation
-import SwiftTerm
 
-/// A command running in a pseudo-terminal with a headless emulator tracking
-/// its screen. Output is delivered on the main queue.
-public final class PtySession {
+/// A command running in a pseudo-terminal owned by the host. Output is
+/// delivered on the main queue.
+public final class PtySession: EmulatedSession, TerminalSession {
     public let id: SessionID
     public let command: [String]
     public let cwd: String
     public private(set) var status: BSSessionStatus = .busy
     public private(set) var exitCode: Int32 = 0
-    public var title: String { delegate.title ?? command.first.map { ($0 as NSString).lastPathComponent } ?? "" }
-    public var rows: Int { terminal.rows }
-    public var cols: Int { terminal.cols }
-
-    /// Raw PTY output, as read.
     public var onOutput: ((Data) -> Void)?
     public var onExit: (() -> Void)?
 
-    private let terminal: Terminal
     private let master: Int32
     private let pid: pid_t
     private var reader: DispatchSourceRead?
-    private let delegate = NullTerminalDelegate()
 
     /// Starts `command` through the user's login shell so PATH matches the terminal.
     public init(id: SessionID = SessionID(), command: [String], cwd: String, rows: Int, cols: Int) throws {
         self.id = id
         self.command = command
         self.cwd = cwd
-        terminal = Terminal(delegate: delegate, options: TerminalOptions(cols: cols, rows: rows))
-
-        var ws = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
+        var ws = winsize(ws_row: UInt16(max(rows, 2)), ws_col: UInt16(max(cols, 2)), ws_xpixel: 0, ws_ypixel: 0)
         var fd: Int32 = 0
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let argv = [shell, "-l", "-c", "exec \"$@\"", "--"] + command
@@ -54,6 +44,7 @@ public final class PtySession {
         for p in cenv { free(p) }
         master = fd
         pid = child
+        super.init(rows: rows, cols: cols)
         startReading()
     }
 
@@ -66,7 +57,7 @@ public final class PtySession {
             if n > 0 {
                 let data = Data(buf[0..<n])
                 DispatchQueue.main.async {
-                    self.terminal.feed(byteArray: [UInt8](data))
+                    self.feed(data)
                     self.onOutput?(data)
                 }
             } else {
@@ -108,26 +99,17 @@ public final class PtySession {
         kill(pid, sig)
     }
 
-    /// Full-screen state for a newly subscribed remote.
-    func snapshot() -> Data { TerminalSnapshot.render(terminal) }
-
     public var state: BSSessionState {
         BSSessionState.with {
             $0.sessionID = id.rawValue
             $0.source = .hostSpawned
             $0.command = command.joined(separator: " ")
             $0.cwd = cwd
-            $0.title = title
+            $0.title = title ?? (command.first as NSString?)?.lastPathComponent ?? ""
             $0.status = status
             $0.rows = UInt32(rows)
             $0.cols = UInt32(cols)
             $0.exitCode = exitCode
         }
     }
-}
-
-final class NullTerminalDelegate: TerminalDelegate {
-    var title: String?
-    func send(source: Terminal, data: ArraySlice<UInt8>) {}
-    func setTerminalTitle(source: Terminal, title: String) { self.title = title }
 }

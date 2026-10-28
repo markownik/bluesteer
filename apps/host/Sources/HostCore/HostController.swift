@@ -23,6 +23,7 @@ public final class HostController {
     private let store: PairingStore
     private let ble: BLEPeripheralService
     public let hub = SessionHub()
+    private let wrapperServer = WrapperSocketServer()
     private var channels: [BLEPeripheralService.LinkID: SecureChannel] = [:]
     private var pendingHello: [BLEPeripheralService.LinkID: String] = [:]
     private let instanceID: Data
@@ -40,6 +41,8 @@ public final class HostController {
         hub.send = { [weak self] envelope, link in try? self?.send(envelope, to: link) }
         hub.pendingBytes = { [weak self] link in self?.ble.pendingBytes(for: link) ?? 0 }
         hub.onSessionChanged = { [weak self] session in self?.broadcast(BSEnvelope.with { $0.sessionState = session.state }) }
+        wrapperServer.onSession = { [weak self] session in self?.hub.add(session) }
+        try wrapperServer.start()
     }
 
     /// Commands the remote may start, resolved through the user's login shell.
@@ -130,6 +133,7 @@ public final class HostController {
         case .listSessions(let cmd):
             try ack(cmd.cmdID, to: id)
             try send(BSEnvelope.with { $0.sessionList = hub.sessionList }, to: id)
+            try send(BSEnvelope.with { $0.projects = BSProjects.with { $0.recentCwds = RecentProjects.load() } }, to: id)
         case .newSession(let cmd):
             var command = Self.presets[cmd.preset] ?? (cmd.preset == "custom" ? [] : nil) ?? []
             command += cmd.args

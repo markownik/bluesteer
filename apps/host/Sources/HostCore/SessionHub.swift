@@ -24,7 +24,7 @@ public final class SessionHub {
         var seq: UInt64 = 0
     }
 
-    public private(set) var sessions: [SessionID: PtySession] = [:]
+    public private(set) var sessions: [SessionID: TerminalSession] = [:]
     private var subscriptions: [LinkID: [SessionID: Subscription]] = [:]
     private var timer: Timer?
 
@@ -33,7 +33,7 @@ public final class SessionHub {
     /// Un-sent bytes queued for a link at the transport.
     public var pendingBytes: ((LinkID) -> Int)?
     /// Called when any session's state changes (for broadcasting SessionState).
-    public var onSessionChanged: ((PtySession) -> Void)?
+    public var onSessionChanged: ((TerminalSession) -> Void)?
 
     public init() {}
 
@@ -46,6 +46,12 @@ public final class SessionHub {
     @discardableResult
     public func start(command: [String], cwd: String, rows: Int, cols: Int) throws -> PtySession {
         let session = try PtySession(command: command, cwd: cwd, rows: max(rows, 2), cols: max(cols, 2))
+        add(session)
+        return session
+    }
+
+    /// Registers any session (host-spawned or wrapped) and starts streaming it.
+    public func add(_ session: TerminalSession) {
         sessions[session.id] = session
         session.onOutput = { [weak self, id = session.id] data in self?.output(data, from: id) }
         session.onExit = { [weak self, weak session] in
@@ -54,7 +60,6 @@ public final class SessionHub {
         }
         startTimer()
         onSessionChanged?(session)
-        return session
     }
 
     public func stop(_ id: SessionID, signal: Int32) {
@@ -114,7 +119,7 @@ public final class SessionHub {
         }
     }
 
-    private func flush(link: LinkID, session: PtySession) {
+    private func flush(link: LinkID, session: TerminalSession) {
         guard let sub = subscriptions[link]?[session.id] else { return }
         let queued = pendingBytes?(link) ?? 0
         if queued > Self.backpressureLimit {

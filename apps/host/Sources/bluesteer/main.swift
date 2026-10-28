@@ -1,21 +1,141 @@
 // bluesteer: command line companion of the BlueSteer host app.
 //
-//   bluesteer run <command...>   run a command in a PTY and bridge it to the host app (Phase 2)
+//   bluesteer run <command...>   run a command in this terminal and bridge it to the host app
 //   bluesteer hook <event>       relay a Claude/Copilot hook event to the host app (Phase 3)
 //   bluesteer sessions           list bridged sessions (Phase 3)
 //   bluesteer status             show host app and Bluetooth status (Phase 3)
 
+import Darwin
 import Foundation
 import HostCore
 
 let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
-case "run", "hook", "sessions", "status":
-    FileHandle.standardError.write("bluesteer \(args[0]): not implemented yet\n".data(using: .utf8)!)
+case "run":
+    guard args.count > 1 else { fputs("usage: bluesteer run <command...>\n", stderr); exit(64) }
+    exit(runWrapped(Array(args.dropFirst())))
+case "hook", "sessions", "status":
+    fputs("bluesteer \(args[0]): not implemented yet\n", stderr)
     exit(2)
 case "--version":
     print(HostInfo.version)
 default:
     print("usage: bluesteer run <command...> | hook <event> | sessions | status")
     exit(64)
+}
+
+/// Runs `command` in a PTY attached to this terminal and mirrors it to the host app.
+func runWrapped(_ command: [String]) -> Int32 {
+    let stdinIsTTY = isatty(STDIN_FILENO) == 1
+    var originalTermios = termios()
+    if stdinIsTTY { tcgetattr(STDIN_FILENO, &originalTermios) }
+    var ws = winsize()
+    if ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0 || ws.ws_row == 0 { ws.ws_row = 40; ws.ws_col = 120 }
+
+    var master: Int32 = 0
+    var childTermios = originalTermios
+    setenv("BLUESTEER_SESSION", UUID().uuidString, 1)
+    let pid: pid_t = stdinIsTTY ? forkpty(&master, nil, &childTermios, &ws) : forkpty(&master, nil, nil, &ws)
+    if pid < 0 { perror("forkpty"); return 1 }
+    if pid == 0 {
+        let cargs = command.map { strdup($0) } + [nil]
+        execvp(command[0], cargs)
+        perror("execvp"); _exit(127)
+    }
+
+    // Connect to the host app; without it the command still runs, just unbridged.
+    let sock = connectToHost()
+    if sock >= 0 {
+        let hello = WrapperHello(command: command, cwd: FileManager.default.currentDirectoryPath,
+                                 rows: Int(ws.ws_row), cols: Int(ws.ws_col), pid: pid)
+        sendFrame(sock, WrapperFrame.hello, try! JSONEncoder().encode(hello))
+    } else {
+        fputs("bluesteer: host app not running, command is not bridged\n", stderr)
+    }
+
+    if stdinIsTTY {
+        var raw = originalTermios
+        cfmakeraw(&raw)
+        tcsetattr(STDIN_FILENO, TCSANOW, &raw)
+    }
+    signal(SIGWINCH, SIG_IGN)
+    let winch = DispatchSource.makeSignalSource(signal: SIGWINCH, queue: .main)
+    winch.setEventHandler {
+        var now = winsize()
+        if ioctl(STDOUT_FILENO, TIOCGWINSZ, &now) == 0 {
+            _ = ioctl(master, TIOCSWINSZ, &now)
+            if sock >= 0 { sendFrame(sock, WrapperFrame.resize, Data("{\"rows\":\(now.ws_row),\"cols\":\(now.ws_col)}".utf8)) }
+        }
+    }
+    winch.resume()
+
+    // PTY → real terminal + host
+    DispatchQueue(label: "pty.out").async {
+        var buf = [UInt8](repeating: 0, count: 65536)
+        while true {
+            let n = read(master, &buf, buf.count)
+            if n <= 0 { break }
+            let data = Data(buf[0..<n])
+            writeAll(STDOUT_FILENO, data)
+            if sock >= 0 { sendFrame(sock, WrapperFrame.output, data) }
+        }
+    }
+    // real keyboard → PTY
+    DispatchQueue(label: "pty.in").async {
+        var buf = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let n = read(STDIN_FILENO, &buf, buf.count)
+            if n <= 0 { break }
+            _ = write(master, buf, n)
+        }
+    }
+    // host (remote keystrokes) → PTY
+    if sock >= 0 {
+        DispatchQueue(label: "host.in").async {
+            var parser = WrapperFrameParser()
+            var buf = [UInt8](repeating: 0, count: 65536)
+            while true {
+                let n = read(sock, &buf, buf.count)
+                if n <= 0 { break }
+                for frame in parser.receive(Data(buf[0..<n])) where frame.type == WrapperFrame.input {
+                    writeAll(master, frame.payload)
+                }
+            }
+        }
+    }
+
+    var status: Int32 = 0
+    waitpid(pid, &status, 0)
+    usleep(50_000)
+    if stdinIsTTY { tcsetattr(STDIN_FILENO, TCSANOW, &originalTermios) }
+    if sock >= 0 { close(sock) }
+    return (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
+}
+
+func connectToHost() -> Int32 {
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard fd >= 0 else { return -1 }
+    var addr = sockaddr_un()
+    addr.sun_family = sa_family_t(AF_UNIX)
+    _ = WrapperSocket.path.withCString { strlcpy(&addr.sun_path.0, $0, MemoryLayout.size(ofValue: addr.sun_path)) }
+    let ok = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+    if ok != 0 { close(fd); return -1 }
+    return fd
+}
+
+let sendLock = NSLock()
+func sendFrame(_ fd: Int32, _ type: UInt8, _ payload: Data) {
+    sendLock.lock(); defer { sendLock.unlock() }
+    writeAll(fd, WrapperFrame.encode(type, payload))
+}
+
+func writeAll(_ fd: Int32, _ data: Data) {
+    data.withUnsafeBytes { ptr in
+        var off = 0
+        while off < data.count {
+            let n = write(fd, ptr.baseAddress! + off, data.count - off)
+            if n <= 0 { break }
+            off += n
+        }
+    }
 }
