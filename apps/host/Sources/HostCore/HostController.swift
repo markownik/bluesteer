@@ -22,6 +22,7 @@ public final class HostController {
 
     private let store: PairingStore
     private let ble: BLEPeripheralService
+    public let hub = SessionHub()
     private var channels: [BLEPeripheralService.LinkID: SecureChannel] = [:]
     private var pendingHello: [BLEPeripheralService.LinkID: String] = [:]
     private let instanceID: Data
@@ -36,7 +37,17 @@ public final class HostController {
         ble.onLinkOpened = { [weak self] id in DispatchQueue.main.async { self?.linkOpened(id) } }
         ble.onLinkClosed = { [weak self] id in DispatchQueue.main.async { self?.linkClosed(id) } }
         ble.onBytes = { [weak self] id, bytes in DispatchQueue.main.async { self?.received(bytes, on: id) } }
+        hub.send = { [weak self] envelope, link in try? self?.send(envelope, to: link) }
+        hub.pendingBytes = { [weak self] link in self?.ble.pendingBytes(for: link) ?? 0 }
+        hub.onSessionChanged = { [weak self] session in self?.broadcast(BSEnvelope.with { $0.sessionState = session.state }) }
     }
+
+    /// Commands the remote may start, resolved through the user's login shell.
+    public static let presets: [String: [String]] = [
+        "claude": ["claude"],
+        "copilot": ["copilot"],
+        "shell": [ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"],
+    ]
 
     // MARK: Pairing
 
@@ -82,6 +93,7 @@ public final class HostController {
     private func linkClosed(_ id: BLEPeripheralService.LinkID) {
         channels[id] = nil
         connected.removeAll { $0.id == id }
+        hub.linkClosed(id)
     }
 
     private func received(_ bytes: Data, on id: BLEPeripheralService.LinkID) {
@@ -116,11 +128,48 @@ public final class HostController {
         case .ping(let ping):
             try send(BSEnvelope.with { $0.pong = BSPong.with { $0.nonce = ping.nonce } }, to: id)
         case .listSessions(let cmd):
-            try send(BSEnvelope.with { $0.ack = BSAck.with { $0.cmdID = cmd.cmdID; $0.ok = true } }, to: id)
-            try send(BSEnvelope.with { $0.sessionList = BSSessionList() }, to: id)
+            try ack(cmd.cmdID, to: id)
+            try send(BSEnvelope.with { $0.sessionList = hub.sessionList }, to: id)
+        case .newSession(let cmd):
+            var command = Self.presets[cmd.preset] ?? (cmd.preset == "custom" ? [] : nil) ?? []
+            command += cmd.args
+            if cmd.lowBandwidth, cmd.preset == "claude" { command.append("--ax-screen-reader") }
+            guard !command.isEmpty else { try ack(cmd.cmdID, to: id, error: "unknown preset \(cmd.preset)"); return }
+            let cwd = cmd.cwd.isEmpty ? NSHomeDirectory() : cmd.cwd
+            do {
+                let session = try hub.start(command: command, cwd: cwd, rows: Int(cmd.rows), cols: Int(cmd.cols))
+                try ack(cmd.cmdID, to: id)
+                hub.subscribe(link: id, session: session.id, rows: Int(cmd.rows), cols: Int(cmd.cols))
+            } catch {
+                try ack(cmd.cmdID, to: id, error: "\(error)")
+            }
+        case .subscribe(let cmd):
+            let sid = SessionID(rawValue: cmd.sessionID)
+            guard hub.sessions[sid] != nil else { try ack(cmd.cmdID, to: id, error: "no such session"); return }
+            try ack(cmd.cmdID, to: id)
+            hub.subscribe(link: id, session: sid, rows: Int(cmd.rows), cols: Int(cmd.cols))
+        case .unsubscribe(let cmd):
+            hub.unsubscribe(link: id, session: SessionID(rawValue: cmd.sessionID))
+            try ack(cmd.cmdID, to: id)
+        case .termInput(let input):
+            hub.input(input.data, session: SessionID(rawValue: input.sessionID))
+        case .resize(let cmd):
+            hub.resize(session: SessionID(rawValue: cmd.sessionID), rows: Int(cmd.rows), cols: Int(cmd.cols))
+            try ack(cmd.cmdID, to: id)
+        case .stopSession(let cmd):
+            hub.stop(SessionID(rawValue: cmd.sessionID), signal: cmd.signal)
+            try ack(cmd.cmdID, to: id)
         default:
-            break // Phase 2: sessions
+            break
         }
+    }
+
+    private func ack(_ cmdID: UInt64, to id: BLEPeripheralService.LinkID, error: String? = nil) throws {
+        try send(BSEnvelope.with { $0.ack = BSAck.with { $0.cmdID = cmdID; $0.ok = error == nil; $0.error = error ?? "" } }, to: id)
+    }
+
+    private func broadcast(_ envelope: BSEnvelope) {
+        for id in channels.keys { try? send(envelope, to: id) }
     }
 
     private func hello() -> BSEnvelope {

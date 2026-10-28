@@ -9,6 +9,7 @@ import '../core/host_session.dart';
 import '../core/identity.dart';
 import '../dev/replay_page.dart';
 import 'pair_page.dart';
+import 'sessions_page.dart';
 
 /// Paired Macs. Tapping one connects, authenticates and shows the ping time.
 class HostsPage extends StatefulWidget {
@@ -69,6 +70,8 @@ class _HostsPageState extends State<HostsPage> {
       _session!.link.connectionState.listen((c) {
         if (!c && mounted) setState(() => _status[host.id] = 'Disconnected');
       });
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SessionsPage(session: _session!, hostName: host.name)));
     } catch (e) {
       await sub.cancel();
       await UniversalBle.stopScan();

@@ -48,6 +48,11 @@ public final class BLEPeripheralService: NSObject {
         }
     }
 
+    /// Bytes queued for a link that have not been handed to CoreBluetooth yet.
+    public func pendingBytes(for link: LinkID) -> Int {
+        queue.sync { queues[link]?.count ?? 0 }
+    }
+
     public func disconnectAll() {
         queue.async { [self] in
             // CoreBluetooth has no peripheral-side disconnect; dropping the queues and

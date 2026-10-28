@@ -5,7 +5,15 @@ import SwiftUI
 @main
 struct BlueSteerHostApp: App {
     @State private var controller: HostController? = {
-        do { return try HostController(store: try PairingStore()) } catch { return nil }
+        do {
+            let c = try HostController(store: try PairingStore())
+            // Development aid: `BlueSteerHost --pair` starts pairing at launch and prints the QR payload.
+            if CommandLine.arguments.contains("--pair") {
+                setvbuf(stdout, nil, _IOLBF, 0)
+                print("PAIRING \(c.beginPairing())")
+            }
+            return c
+        } catch { return nil }
     }()
 
     var body: some Scene {

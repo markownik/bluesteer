@@ -1,3 +1,4 @@
+import BlueSteerProtocol
 import Foundation
 
 /// Identifies one bridged terminal session.
@@ -6,13 +7,153 @@ public struct SessionID: Hashable, Codable, Sendable {
     public init(rawValue: String = UUID().uuidString) { self.rawValue = rawValue }
 }
 
-/// Owns all sessions and routes between them and connected remotes.
-/// Phase 2 fills this in; for now it only tracks identifiers.
+/// Owns all sessions and the per-remote subscriptions to their output.
+/// Everything runs on the main queue.
 public final class SessionHub {
-    public private(set) var sessionIDs: [SessionID] = []
+    public typealias LinkID = UUID
+
+    /// Un-sent bytes per link above which pending output is replaced by a snapshot (SPEC.md §5).
+    static let backpressureLimit = 16 * 1024
+    static let resumeBelow = 4 * 1024
+    static let tick: TimeInterval = 0.05
+
+    private final class Subscription {
+        var deflate = DeflateStream()
+        var pending = Data()
+        var needsSnapshot = true
+        var seq: UInt64 = 0
+    }
+
+    public private(set) var sessions: [SessionID: PtySession] = [:]
+    private var subscriptions: [LinkID: [SessionID: Subscription]] = [:]
+    private var timer: Timer?
+
+    /// Sends one envelope to a link.
+    public var send: ((BSEnvelope, LinkID) -> Void)?
+    /// Un-sent bytes queued for a link at the transport.
+    public var pendingBytes: ((LinkID) -> Int)?
+    /// Called when any session's state changes (for broadcasting SessionState).
+    public var onSessionChanged: ((PtySession) -> Void)?
 
     public init() {}
 
-    public func register(_ id: SessionID) { sessionIDs.append(id) }
-    public func unregister(_ id: SessionID) { sessionIDs.removeAll { $0 == id } }
+    public var sessionList: BSSessionList {
+        BSSessionList.with { $0.sessions = sessions.values.sorted { $0.id.rawValue < $1.id.rawValue }.map(\.state) }
+    }
+
+    // MARK: Sessions
+
+    @discardableResult
+    public func start(command: [String], cwd: String, rows: Int, cols: Int) throws -> PtySession {
+        let session = try PtySession(command: command, cwd: cwd, rows: max(rows, 2), cols: max(cols, 2))
+        sessions[session.id] = session
+        session.onOutput = { [weak self, id = session.id] data in self?.output(data, from: id) }
+        session.onExit = { [weak self, weak session] in
+            guard let self, let session else { return }
+            onSessionChanged?(session)
+        }
+        startTimer()
+        onSessionChanged?(session)
+        return session
+    }
+
+    public func stop(_ id: SessionID, signal: Int32) {
+        sessions[id]?.stop(signal: signal == 0 ? SIGTERM : signal)
+    }
+
+    /// Forgets an exited session.
+    public func remove(_ id: SessionID) {
+        guard sessions[id]?.status == .exited else { return }
+        sessions[id] = nil
+        for link in subscriptions.keys { subscriptions[link]?[id] = nil }
+    }
+
+    // MARK: Subscriptions
+
+    public func subscribe(link: LinkID, session id: SessionID, rows: Int, cols: Int) {
+        guard let session = sessions[id] else { return }
+        session.resize(rows: rows, cols: cols)
+        subscriptions[link, default: [:]][id] = Subscription()
+        flush(link: link, session: session)
+    }
+
+    public func unsubscribe(link: LinkID, session id: SessionID) {
+        subscriptions[link]?[id] = nil
+    }
+
+    public func linkClosed(_ link: LinkID) {
+        subscriptions[link] = nil
+    }
+
+    public func input(_ data: Data, session id: SessionID) {
+        sessions[id]?.write(data)
+    }
+
+    public func resize(session id: SessionID, rows: Int, cols: Int) {
+        sessions[id]?.resize(rows: rows, cols: cols)
+    }
+
+    // MARK: Output pipeline
+
+    private func output(_ data: Data, from id: SessionID) {
+        for (_, subs) in subscriptions {
+            if let sub = subs[id], !sub.needsSnapshot { sub.pending.append(data) }
+        }
+    }
+
+    private func startTimer() {
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: Self.tick, repeats: true) { [weak self] _ in self?.flushAll() }
+    }
+
+    private func flushAll() {
+        for (link, subs) in subscriptions {
+            for (id, _) in subs {
+                if let session = sessions[id] { flush(link: link, session: session) }
+            }
+        }
+    }
+
+    private func flush(link: LinkID, session: PtySession) {
+        guard let sub = subscriptions[link]?[session.id] else { return }
+        let queued = pendingBytes?(link) ?? 0
+        if queued > Self.backpressureLimit {
+            // The link cannot keep up: drop what we buffered and start over from a snapshot.
+            sub.pending.removeAll()
+            sub.needsSnapshot = true
+            return
+        }
+        if sub.needsSnapshot {
+            guard queued < Self.resumeBelow else { return }
+            sub.needsSnapshot = false
+            sub.deflate = DeflateStream()
+            sub.seq += 1
+            let snapshot = BSEnvelope.with {
+                $0.termSnapshot = BSTermSnapshot.with {
+                    $0.sessionID = session.id.rawValue
+                    $0.seq = sub.seq
+                    $0.rows = UInt32(session.rows)
+                    $0.cols = UInt32(session.cols)
+                    $0.vt = DeflateStream.compress(session.snapshot())
+                    $0.compressed = true
+                }
+            }
+            send?(snapshot, link)
+            return
+        }
+        while !sub.pending.isEmpty {
+            let piece = sub.pending.prefix(3000)
+            sub.pending.removeFirst(piece.count)
+            sub.seq += 1
+            let out = BSEnvelope.with {
+                $0.termOutput = BSTermOutput.with {
+                    $0.sessionID = session.id.rawValue
+                    $0.seq = sub.seq
+                    $0.data = sub.deflate.push(piece)
+                    $0.compressed = true
+                }
+            }
+            send?(out, link)
+        }
+    }
 }
