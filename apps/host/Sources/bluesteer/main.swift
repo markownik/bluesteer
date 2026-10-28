@@ -3,12 +3,12 @@
 //   bluesteer run <command...>   run a command in this terminal and bridge it to the host app
 //   bluesteer hook <event>       relay a Claude Code hook event to the host app (exits 0 at once)
 //   bluesteer hooks install|remove   add or remove the hook entries in ~/.claude/settings.json
-//   bluesteer sessions           list bridged sessions (Phase 3)
-//   bluesteer status             show host app and Bluetooth status (Phase 3)
+//   bluesteer pair | hosts | connect   use this Mac as a remote for another Mac (Remote.swift)
 
 import Darwin
 import Foundation
 import HostCore
+import RemoteCore
 
 let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
@@ -27,13 +27,16 @@ case "hooks":
         default: print(HookInstaller.isInstalled() ? "installed" : "not installed"); exit(HookInstaller.isInstalled() ? 0 : 1)
         }
     } catch { fputs("bluesteer hooks: \(error.localizedDescription)\n", stderr); exit(1) }
-case "sessions", "status":
-    fputs("bluesteer \(args[0]): not implemented yet\n", stderr)
-    exit(2)
+case "pair":
+    exit(cmdPair(Array(args.dropFirst())))
+case "hosts":
+    exit(cmdHosts())
+case "connect":
+    exit(cmdConnect(Array(args.dropFirst())))
 case "--version":
     print(HostInfo.version)
 default:
-    print("usage: bluesteer run <command...> | hook <Event> | hooks [install|remove] | sessions | status")
+    print("usage: bluesteer run <command...> | hook <Event> | hooks [install|remove] | pair [link] | hosts | connect [name] [--new]")
     exit(64)
 }
 
@@ -57,14 +60,13 @@ func relayHook(_ event: String) -> Int32 {
 
 /// Runs `command` in a PTY attached to this terminal and mirrors it to the host app.
 func runWrapped(_ command: [String]) -> Int32 {
-    let stdinIsTTY = isatty(STDIN_FILENO) == 1
-    var originalTermios = termios()
-    if stdinIsTTY { tcgetattr(STDIN_FILENO, &originalTermios) }
-    var ws = winsize()
-    if ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0 || ws.ws_row == 0 { ws.ws_row = 40; ws.ws_col = 120 }
+    let terminal = RawTerminal()
+    let stdinIsTTY = terminal.isTTY
+    let size = RawTerminal.size
+    var ws = winsize(ws_row: UInt16(size.rows), ws_col: UInt16(size.cols), ws_xpixel: 0, ws_ypixel: 0)
 
     var master: Int32 = 0
-    var childTermios = originalTermios
+    var childTermios = terminal.savedTermios
     let sessionID = UUID().uuidString
     setenv("BLUESTEER_SESSION", sessionID, 1)
     let pid: pid_t = stdinIsTTY ? forkpty(&master, nil, &childTermios, &ws) : forkpty(&master, nil, nil, &ws)
@@ -85,21 +87,15 @@ func runWrapped(_ command: [String]) -> Int32 {
         fputs("bluesteer: host app not running, command is not bridged\n", stderr)
     }
 
-    if stdinIsTTY {
-        var raw = originalTermios
-        cfmakeraw(&raw)
-        tcsetattr(STDIN_FILENO, TCSANOW, &raw)
-    }
-    signal(SIGWINCH, SIG_IGN)
-    let winch = DispatchSource.makeSignalSource(signal: SIGWINCH, queue: .main)
-    winch.setEventHandler {
+    terminal.enterRaw()
+    let winch = RawTerminal.onResize(queue: .main) {
         var now = winsize()
         if ioctl(STDOUT_FILENO, TIOCGWINSZ, &now) == 0 {
             _ = ioctl(master, TIOCSWINSZ, &now)
             if sock >= 0 { sendFrame(sock, WrapperFrame.resize, Data("{\"rows\":\(now.ws_row),\"cols\":\(now.ws_col)}".utf8)) }
         }
     }
-    winch.resume()
+    _ = winch
 
     // PTY → real terminal + host
     DispatchQueue(label: "pty.out").async {
@@ -139,7 +135,7 @@ func runWrapped(_ command: [String]) -> Int32 {
     var status: Int32 = 0
     waitpid(pid, &status, 0)
     usleep(50_000)
-    if stdinIsTTY { tcsetattr(STDIN_FILENO, TCSANOW, &originalTermios) }
+    terminal.restore()
     if sock >= 0 { close(sock) }
     return (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
 }
@@ -161,13 +157,4 @@ func sendFrame(_ fd: Int32, _ type: UInt8, _ payload: Data) {
     writeAll(fd, WrapperFrame.encode(type, payload))
 }
 
-func writeAll(_ fd: Int32, _ data: Data) {
-    data.withUnsafeBytes { ptr in
-        var off = 0
-        while off < data.count {
-            let n = write(fd, ptr.baseAddress! + off, data.count - off)
-            if n <= 0 { break }
-            off += n
-        }
-    }
-}
+func writeAll(_ fd: Int32, _ data: Data) { RawTerminal.writeAll(fd, data) }

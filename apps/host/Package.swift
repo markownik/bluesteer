@@ -22,9 +22,11 @@ let package = Package(
             ]
         ),
         // Menu-bar app. Wrapped into a .app bundle by tools/bundle-app.sh.
-        .executableTarget(name: "BlueSteerHost", dependencies: ["HostCore"]),
-        // Command line tool: `bluesteer run|hook|sessions|status`.
-        .executableTarget(name: "bluesteer", dependencies: ["HostCore"]),
-        .testTarget(name: "HostCoreTests", dependencies: ["HostCore"]),
+        .executableTarget(name: "BlueSteerHost", dependencies: ["HostCore"], resources: [.process("Resources")]),
+        // The console remote: BLE central, remote end of the protocol, terminal attach.
+        .target(name: "RemoteCore", dependencies: ["HostCore", .product(name: "BlueSteerProtocol", package: "BlueSteerProtocol")]),
+        // Command line tool: `bluesteer run|hook|hooks|pair|hosts|connect`.
+        .executableTarget(name: "bluesteer", dependencies: ["HostCore", "RemoteCore"]),
+        .testTarget(name: "HostCoreTests", dependencies: ["HostCore", "RemoteCore"]),
     ]
 )

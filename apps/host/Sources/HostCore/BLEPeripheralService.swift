@@ -7,10 +7,10 @@ public final class BLEPeripheralService: NSObject {
     public typealias LinkID = UUID
 
     public static let serviceUUID = CBUUID(string: "7B5E5A6E-0001-4B1E-9C0E-5A2D2E1F0001")
-    static let txUUID = CBUUID(string: "7B5E5A6E-0002-4B1E-9C0E-5A2D2E1F0001")
-    static let rxUUID = CBUUID(string: "7B5E5A6E-0003-4B1E-9C0E-5A2D2E1F0001")
-    static let infoUUID = CBUUID(string: "7B5E5A6E-0004-4B1E-9C0E-5A2D2E1F0001")
-    static let statusUUID = CBUUID(string: "7B5E5A6E-0005-4B1E-9C0E-5A2D2E1F0001")
+    public static let txUUID = CBUUID(string: "7B5E5A6E-0002-4B1E-9C0E-5A2D2E1F0001")
+    public static let rxUUID = CBUUID(string: "7B5E5A6E-0003-4B1E-9C0E-5A2D2E1F0001")
+    public static let infoUUID = CBUUID(string: "7B5E5A6E-0004-4B1E-9C0E-5A2D2E1F0001")
+    public static let statusUUID = CBUUID(string: "7B5E5A6E-0005-4B1E-9C0E-5A2D2E1F0001")
 
     public var onStateChange: ((CBManagerState) -> Void)?
     public var onLinkOpened: ((LinkID) -> Void)?
