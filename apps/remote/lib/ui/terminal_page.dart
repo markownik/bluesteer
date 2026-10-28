@@ -162,6 +162,9 @@ class _TerminalPageState extends State<TerminalPage> {
             autofocus: true,
             // A plain keyboard: no predictions, autocorrect or auto-capitalisation.
             keyboardType: TextInputType.visiblePassword,
+            // iOS soft keyboards send no key event for backspace; xterm detects
+            // it from the text input instead.
+            deleteDetection: true,
           ),
         ),
         SizedBox(
