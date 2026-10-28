@@ -1137,11 +1137,13 @@ class Ack extends $pb.GeneratedMessage {
     $fixnum.Int64? cmdId,
     $core.bool? ok,
     $core.String? error,
+    $core.String? sessionId,
   }) {
     final result = Ack._();
     if (cmdId != null) result.cmdId = cmdId;
     if (ok != null) result.ok = ok;
     if (error != null) result.error = error;
+    if (sessionId != null) result.sessionId = sessionId;
     return result;
   }
 
@@ -1162,6 +1164,7 @@ class Ack extends $pb.GeneratedMessage {
         defaultOrMaker: $fixnum.Int64.ZERO)
     ..aOB(2, _omitFieldNames ? '' : 'ok')
     ..aOS(3, _omitFieldNames ? '' : 'error')
+    ..aOS(4, _omitFieldNames ? '' : 'sessionId')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1210,6 +1213,15 @@ class Ack extends $pb.GeneratedMessage {
   $core.bool hasError() => $_has(2);
   @$pb.TagNumber(3)
   void clearError() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get sessionId => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set sessionId($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasSessionId() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearSessionId() => $_clearField(4);
 }
 
 class Projects extends $pb.GeneratedMessage {

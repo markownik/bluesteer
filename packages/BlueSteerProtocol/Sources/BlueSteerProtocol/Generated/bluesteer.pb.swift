@@ -535,6 +535,9 @@ public nonisolated struct BSAck: Sendable {
 
   public var error: String = String()
 
+  /// for NewSession: id of the started session
+  public var sessionID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -603,19 +606,19 @@ public nonisolated struct BSNewSession: Sendable {
 
   public var cmdID: UInt64 = 0
 
-  /// e.g. "claude", "copilot", "shell", "custom"
+  /// v1 hosts accept only "shell" (the user's login shell)
   public var preset: String = String()
 
   public var cwd: String = String()
 
-  /// extra arguments for the preset's command
+  /// reserved for later versions
   public var args: [String] = []
 
   public var rows: UInt32 = 0
 
   public var cols: UInt32 = 0
 
-  /// e.g. adds --ax-screen-reader for Claude
+  /// reserved for later versions
   public var lowBandwidth: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -1453,7 +1456,7 @@ nonisolated extension BSNotification: SwiftProtobuf.Message, SwiftProtobuf._Mess
 
 nonisolated extension BSAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Ack"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}cmd_id\0\u{1}ok\0\u{1}error\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}cmd_id\0\u{1}ok\0\u{1}error\0\u{3}session_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1464,6 +1467,7 @@ nonisolated extension BSAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
       case 1: try { try decoder.decodeSingularUInt64Field(value: &self.cmdID) }()
       case 2: try { try decoder.decodeSingularBoolField(value: &self.ok) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.error) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       default: break
       }
     }
@@ -1479,6 +1483,9 @@ nonisolated extension BSAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     if !self.error.isEmpty {
       try visitor.visitSingularStringField(value: self.error, fieldNumber: 3)
     }
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1486,6 +1493,7 @@ nonisolated extension BSAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     if lhs.cmdID != rhs.cmdID {return false}
     if lhs.ok != rhs.ok {return false}
     if lhs.error != rhs.error {return false}
+    if lhs.sessionID != rhs.sessionID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

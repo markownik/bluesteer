@@ -25,7 +25,7 @@ agent CLI in a PTY  ──► headless SwiftTerm ──► deflate  ─BLE─►
 
 ## Session sources
 
-1. Host-spawned: the host runs a preset command in a PTY.
+1. Host-spawned: the host runs the user's login shell in a PTY (v1; agent presets come later).
 2. Wrapped: `bluesteer run claude` in your own terminal; the PTY output is also streamed to the host.
 3. Attached: the host runs `claude attach <id>` for a Claude background session.
 4. Discovered: listed from `claude agents --json`, not bridged.

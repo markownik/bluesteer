@@ -148,8 +148,6 @@ class _TerminalPageState extends State<TerminalPage> {
             _KeyButton('←', () => _key('\x1b[D')),
             _KeyButton('→', () => _key('\x1b[C')),
             _KeyButton('⏎', () => _key('\r')),
-            _KeyButton('/', () => _key('/')),
-            for (final n in ['1', '2', '3']) _KeyButton(n, () => _key(n)),
           ]),
         ),
         Padding(
@@ -160,7 +158,7 @@ class _TerminalPageState extends State<TerminalPage> {
                 controller: _composer,
                 minLines: 1,
                 maxLines: 4,
-                decoration: const InputDecoration(hintText: 'Compose a prompt…', isDense: true, border: OutlineInputBorder()),
+                decoration: const InputDecoration(hintText: 'Type a command…', isDense: true, border: OutlineInputBorder()),
               ),
             ),
             IconButton(onPressed: _sendComposer, icon: const Icon(Icons.send)),

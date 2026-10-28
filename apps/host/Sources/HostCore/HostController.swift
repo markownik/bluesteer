@@ -40,15 +40,17 @@ public final class HostController {
         ble.onBytes = { [weak self] id, bytes in DispatchQueue.main.async { self?.received(bytes, on: id) } }
         hub.send = { [weak self] envelope, link in try? self?.send(envelope, to: link) }
         hub.pendingBytes = { [weak self] link in self?.ble.pendingBytes(for: link) ?? 0 }
-        hub.onSessionChanged = { [weak self] session in self?.broadcast(BSEnvelope.with { $0.sessionState = session.state }) }
+        hub.onSessionChanged = { [weak self] session in
+            guard let self else { return }
+            broadcast(BSEnvelope.with { $0.sessionState = session.state })
+            if session.status == .exited { hub.remove(session.id) }
+        }
         wrapperServer.onSession = { [weak self] session in self?.hub.add(session) }
         try wrapperServer.start()
     }
 
-    /// Commands the remote may start, resolved through the user's login shell.
+    /// Commands the remote may start (SPEC.md §4.1: v1 is the login shell only).
     public static let presets: [String: [String]] = [
-        "claude": ["claude"],
-        "copilot": ["copilot"],
         "shell": [ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"],
     ]
 
@@ -133,17 +135,12 @@ public final class HostController {
         case .listSessions(let cmd):
             try ack(cmd.cmdID, to: id)
             try send(BSEnvelope.with { $0.sessionList = hub.sessionList }, to: id)
-            try send(BSEnvelope.with { $0.projects = BSProjects.with { $0.recentCwds = RecentProjects.load() } }, to: id)
         case .newSession(let cmd):
-            var command = Self.presets[cmd.preset] ?? (cmd.preset == "custom" ? [] : nil) ?? []
-            command += cmd.args
-            if cmd.lowBandwidth, cmd.preset == "claude" { command.append("--ax-screen-reader") }
-            guard !command.isEmpty else { try ack(cmd.cmdID, to: id, error: "unknown preset \(cmd.preset)"); return }
+            guard let command = Self.presets[cmd.preset] else { try ack(cmd.cmdID, to: id, error: "unknown preset \(cmd.preset)"); return }
             let cwd = cmd.cwd.isEmpty ? NSHomeDirectory() : cmd.cwd
             do {
                 let session = try hub.start(command: command, cwd: cwd, rows: Int(cmd.rows), cols: Int(cmd.cols))
-                try ack(cmd.cmdID, to: id)
-                hub.subscribe(link: id, session: session.id, rows: Int(cmd.rows), cols: Int(cmd.cols))
+                try ack(cmd.cmdID, to: id, sessionID: session.id)
             } catch {
                 try ack(cmd.cmdID, to: id, error: "\(error)")
             }
@@ -168,8 +165,15 @@ public final class HostController {
         }
     }
 
-    private func ack(_ cmdID: UInt64, to id: BLEPeripheralService.LinkID, error: String? = nil) throws {
-        try send(BSEnvelope.with { $0.ack = BSAck.with { $0.cmdID = cmdID; $0.ok = error == nil; $0.error = error ?? "" } }, to: id)
+    private func ack(_ cmdID: UInt64, to id: BLEPeripheralService.LinkID, error: String? = nil, sessionID: SessionID? = nil) throws {
+        try send(BSEnvelope.with {
+            $0.ack = BSAck.with {
+                $0.cmdID = cmdID
+                $0.ok = error == nil
+                $0.error = error ?? ""
+                $0.sessionID = sessionID?.rawValue ?? ""
+            }
+        }, to: id)
     }
 
     private func broadcast(_ envelope: BSEnvelope) {

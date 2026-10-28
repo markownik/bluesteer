@@ -128,6 +128,7 @@ message Ack {
   uint64 cmd_id = 1;
   bool ok = 2;
   string error = 3;
+  string session_id = 4;          // for NewSession: id of the started session
 }
 
 message Projects {
@@ -156,12 +157,12 @@ message Unsubscribe {
 
 message NewSession {
   uint64 cmd_id = 1;
-  string preset = 2;              // e.g. "claude", "copilot", "shell", "custom"
+  string preset = 2;              // v1 hosts accept only "shell" (the user's login shell)
   string cwd = 3;
-  repeated string args = 4;       // extra arguments for the preset's command
+  repeated string args = 4;       // reserved for later versions
   uint32 rows = 5;
   uint32 cols = 6;
-  bool low_bandwidth = 7;         // e.g. adds --ax-screen-reader for Claude
+  bool low_bandwidth = 7;         // reserved for later versions
 }
 
 message AttachBackground {

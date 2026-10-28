@@ -56,6 +56,8 @@ public final class SessionHub {
         session.onOutput = { [weak self, id = session.id] data in self?.output(data, from: id) }
         session.onExit = { [weak self, weak session] in
             guard let self, let session else { return }
+            // Deliver the last output before anyone learns the session is gone.
+            for link in subscriptions.keys { flush(link: link, session: session) }
             onSessionChanged?(session)
         }
         startTimer()

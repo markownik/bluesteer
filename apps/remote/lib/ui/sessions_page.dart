@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../core/host_session.dart';
 import 'terminal_page.dart';
 
-/// Sessions on one connected host; start new ones or open a terminal to one.
+/// Terminals running on one connected Mac; open one or start a new shell.
 class SessionsPage extends StatefulWidget {
   const SessionsPage({super.key, required this.session, required this.hostName});
   final HostSession session;
@@ -19,10 +19,11 @@ class SessionsPage extends StatefulWidget {
 
 class _SessionsPageState extends State<SessionsPage> {
   final _sessions = <String, SessionState>{};
-  List<String> _projects = const [];
-  String? _lastCwd;
+  final _pendingAcks = <Int64, Completer<Ack>>{};
   StreamSubscription<Envelope>? _sub;
   int _cmdId = 1000;
+  bool _listed = false;
+  bool _starting = false;
 
   @override
   void initState() {
@@ -32,13 +33,23 @@ class _SessionsPageState extends State<SessionsPage> {
         setState(() {
           _sessions.clear();
           for (final s in e.sessionList.sessions) {
+            if (s.status != SessionStatus.SESSION_STATUS_EXITED) _sessions[s.sessionId] = s;
+          }
+        });
+        // First connect with nothing running: open a terminal straight away.
+        if (!_listed && _sessions.isEmpty) _newTerminal();
+        _listed = true;
+      } else if (e.hasSessionState()) {
+        final s = e.sessionState;
+        setState(() {
+          if (s.status == SessionStatus.SESSION_STATUS_EXITED) {
+            _sessions.remove(s.sessionId);
+          } else {
             _sessions[s.sessionId] = s;
           }
         });
-      } else if (e.hasSessionState()) {
-        setState(() => _sessions[e.sessionState.sessionId] = e.sessionState);
-      } else if (e.hasProjects()) {
-        setState(() => _projects = e.projects.recentCwds);
+      } else if (e.hasAck()) {
+        _pendingAcks.remove(e.ack.cmdId)?.complete(e.ack);
       }
     });
     widget.session.send(Envelope()..listSessions = (ListSessions()..cmdId = Int64(_cmdId++)));
@@ -50,30 +61,40 @@ class _SessionsPageState extends State<SessionsPage> {
     super.dispose();
   }
 
-  Future<void> _newSession() async {
-    final cwdController = TextEditingController(text: _lastCwd ?? _projects.firstOrNull ?? '');
-    final result = await showDialog<(String, String)>(
-      context: context,
-      builder: (ctx) => _NewSessionDialog(projects: _projects, cwdController: cwdController),
-    );
-    if (result == null || !mounted) return;
-    final (preset, cwd) = result;
-    _lastCwd = cwd;
+  Future<void> _newTerminal() async {
+    if (_starting) return;
+    setState(() => _starting = true);
+    final cmdId = Int64(_cmdId++);
+    final ack = Completer<Ack>();
+    _pendingAcks[cmdId] = ack;
     final size = MediaQuery.of(context).size;
-    await widget.session.send(Envelope()
-      ..newSession = (NewSession()
-        ..cmdId = Int64(_cmdId++)
-        ..preset = preset
-        ..cwd = cwd
-        ..rows = (size.height / 22).floor().clamp(10, 60)
-        ..cols = (size.width / 7).floor().clamp(40, 200)));
+    try {
+      await widget.session.send(Envelope()
+        ..newSession = (NewSession()
+          ..cmdId = cmdId
+          ..preset = 'shell'
+          ..rows = (size.height / 22).floor().clamp(10, 60)
+          ..cols = (size.width / 7).floor().clamp(40, 200)));
+      final result = await ack.future.timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (!result.ok) throw result.error;
+      final state = _sessions[result.sessionId];
+      _open(result.sessionId, state == null ? 'Terminal' : _titleOf(state));
+    } catch (e) {
+      _pendingAcks.remove(cmdId);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start a terminal: $e')));
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
   }
 
-  void _open(SessionState s) {
+  void _open(String sessionId, String title) {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => TerminalPage(session: widget.session, sessionId: s.sessionId, title: s.title.isEmpty ? s.command : s.title),
+      builder: (_) => TerminalPage(session: widget.session, sessionId: sessionId, title: title),
     ));
   }
+
+  static String _titleOf(SessionState s) => s.title.isNotEmpty ? s.title : s.command.split('/').last;
 
   @override
   Widget build(BuildContext context) {
@@ -81,74 +102,23 @@ class _SessionsPageState extends State<SessionsPage> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.hostName)),
       body: list.isEmpty
-          ? const Center(child: Text('No sessions. Tap + to start one.'))
+          ? Center(child: Text(_starting ? 'Starting a terminal…' : 'No terminals running.'))
           : ListView(
               children: [
                 for (final s in list)
                   ListTile(
-                    leading: Icon(s.status == SessionStatus.SESSION_STATUS_EXITED ? Icons.stop_circle_outlined : Icons.terminal),
-                    title: Text(s.title.isEmpty ? s.command : s.title),
-                    subtitle: Text('${s.cwd}  ·  ${s.status.name.replaceFirst('SESSION_STATUS_', '').toLowerCase()}'
-                        '${s.source == SessionSource.SESSION_SOURCE_WRAPPED ? '  ·  your terminal' : ''}  ·  ${s.cols}×${s.rows}'),
-                    onTap: () => _open(s),
+                    leading: const Icon(Icons.terminal),
+                    title: Text(_titleOf(s)),
+                    subtitle: Text(s.source == SessionSource.SESSION_SOURCE_WRAPPED ? '${s.cwd}  ·  your terminal' : s.cwd),
+                    onTap: () => _open(s.sessionId, _titleOf(s)),
                   ),
               ],
             ),
-      floatingActionButton: FloatingActionButton(onPressed: _newSession, child: const Icon(Icons.add)),
-    );
-  }
-}
-
-class _NewSessionDialog extends StatefulWidget {
-  const _NewSessionDialog({required this.projects, required this.cwdController});
-  final List<String> projects;
-  final TextEditingController cwdController;
-
-  @override
-  State<_NewSessionDialog> createState() => _NewSessionDialogState();
-}
-
-class _NewSessionDialogState extends State<_NewSessionDialog> {
-  String _preset = 'claude';
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('New session'),
-      content: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'claude', label: Text('Claude')),
-              ButtonSegment(value: 'copilot', label: Text('Copilot')),
-              ButtonSegment(value: 'shell', label: Text('Shell')),
-            ],
-            selected: {_preset},
-            onSelectionChanged: (v) => setState(() => _preset = v.first),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: widget.cwdController,
-            decoration: const InputDecoration(labelText: 'Project directory', isDense: true),
-          ),
-          const SizedBox(height: 8),
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            for (final p in widget.projects)
-              ActionChip(
-                label: Text(p.split('/').last, style: const TextStyle(fontSize: 12)),
-                tooltip: p,
-                onPressed: () => widget.cwdController.text = p,
-              ),
-          ]),
-        ]),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _starting ? null : _newTerminal,
+        icon: const Icon(Icons.add),
+        label: const Text('New terminal'),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, (_preset, widget.cwdController.text.trim())),
-          child: const Text('Start'),
-        ),
-      ],
     );
   }
 }

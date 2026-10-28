@@ -7,8 +7,6 @@ import 'package:universal_ble/universal_ble.dart';
 import '../ble/host_link.dart';
 import '../core/host_session.dart';
 import '../core/identity.dart';
-import '../dev/replay_page.dart';
-import '../dev/term_test_page.dart';
 import 'pair_page.dart';
 import 'sessions_page.dart';
 
@@ -84,21 +82,7 @@ class _HostsPageState extends State<HostsPage> {
   Widget build(BuildContext context) {
     final hosts = widget.identity.hosts;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('BlueSteer'),
-        actions: [
-          IconButton(
-            tooltip: 'Terminal render test (dev)',
-            icon: const Icon(Icons.bug_report),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermTestPage())),
-          ),
-          IconButton(
-            tooltip: 'Replay a recording (dev)',
-            icon: const Icon(Icons.terminal),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReplayPage())),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('BlueSteer')),
       body: hosts.isEmpty
           ? const Center(child: Text('No paired Macs yet.\nOpen BlueSteer on your Mac, choose "Pair a remote…", then tap +.', textAlign: TextAlign.center))
           : ListView(
