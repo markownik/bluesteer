@@ -24,7 +24,6 @@ class TerminalPage extends StatefulWidget {
 class _TerminalPageState extends State<TerminalPage> {
   final terminal = Terminal(maxLines: 5000);
   final _controller = TerminalController();
-  final _composer = TextEditingController();
   StreamSubscription<Envelope>? _sub;
   ByteConversionSink? _inflater; // per-subscription raw-deflate stream
   late final ByteConversionSink _utf8;
@@ -105,20 +104,11 @@ class _TerminalPageState extends State<TerminalPage> {
 
   void _key(String seq) => terminal.onOutput?.call(seq);
 
-  void _sendComposer() {
-    final text = _composer.text;
-    if (text.isEmpty) return;
-    // Bracketed paste keeps newlines from submitting early; Enter submits.
-    _key('\x1b[200~$text\x1b[201~\r');
-    _composer.clear();
-  }
-
   @override
   void dispose() {
     _sub?.cancel();
     _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
     _inflater?.close();
-    _composer.dispose();
     super.dispose();
   }
 
@@ -133,6 +123,8 @@ class _TerminalPageState extends State<TerminalPage> {
             controller: _controller,
             textStyle: const TerminalStyle(fontSize: 11),
             autofocus: true,
+            // A plain keyboard: no predictions, autocorrect or auto-capitalisation.
+            keyboardType: TextInputType.visiblePassword,
           ),
         ),
         SizedBox(
@@ -148,20 +140,6 @@ class _TerminalPageState extends State<TerminalPage> {
             _KeyButton('←', () => _key('\x1b[D')),
             _KeyButton('→', () => _key('\x1b[C')),
             _KeyButton('⏎', () => _key('\r')),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-          child: Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _composer,
-                minLines: 1,
-                maxLines: 4,
-                decoration: const InputDecoration(hintText: 'Type a command…', isDense: true, border: OutlineInputBorder()),
-              ),
-            ),
-            IconButton(onPressed: _sendComposer, icon: const Icon(Icons.send)),
           ]),
         ),
       ]),
