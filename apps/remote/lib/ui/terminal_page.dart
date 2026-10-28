@@ -34,6 +34,7 @@ class _TerminalPageState extends State<TerminalPage> {
   late String _cwd = widget.cwd;
   int _cmdId = 1;
   bool _subscribed = false;
+  Timer? _resizeTimer;
 
   @override
   void initState() {
@@ -48,7 +49,11 @@ class _TerminalPageState extends State<TerminalPage> {
         _subscribed = true;
         _subscribe();
       } else {
-        _send(Envelope()..resize = (Resize()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId..rows = h..cols = w));
+        // iOS animates the keyboard in, resizing the view a dozen times; send the settled size.
+        _resizeTimer?.cancel();
+        _resizeTimer = Timer(const Duration(milliseconds: 200), () {
+          _send(Envelope()..resize = (Resize()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId..rows = h..cols = w));
+        });
       }
     };
     _sub = widget.session.envelopes.listen(_onEnvelope, onError: (e) => setState(() => _status = 'error: $e'));
@@ -110,6 +115,7 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   void dispose() {
+    _resizeTimer?.cancel();
     _sub?.cancel();
     _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
     _inflater?.close();

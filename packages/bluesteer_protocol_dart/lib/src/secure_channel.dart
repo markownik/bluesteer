@@ -57,18 +57,36 @@ class SecureChannel {
   NoiseCipherState? _receive;
   final Framer _framer = Framer();
   Uint8List? remoteStaticKey;
+  // Nonces are assigned across awaits, so overlapping calls (BLE chunks arrive
+  // in bursts) must not interleave: every operation runs after the previous one.
+  Future<void> _serial = Future.value();
 
   bool get isEstablished => _send != null;
 
+  Future<T> _ordered<T>(Future<T> Function() operation) {
+    final result = _serial.then((_) => operation());
+    _serial = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
   /// The initiator (remote) calls this once to get the first bytes to send.
-  Future<Uint8List> start() async {
+  Future<Uint8List> start() => _ordered(() async {
     final hs = _handshake;
     if (hs == null || !hs.isInitiator) throw SecureChannelException('not the initiator');
     return frame(await hs.writeMessage());
-  }
+  });
 
   /// Feeds bytes from the peer; returns what happened, in order.
-  Future<List<SecureChannelEvent>> receive(List<int> bytes) async {
+  Future<List<SecureChannelEvent>> receive(List<int> bytes) => _ordered(() => _receiveNow(bytes));
+
+  /// Encrypts and frames one application message.
+  Future<Uint8List> encrypt(List<int> plaintext) => _ordered(() async {
+    final tx = _send;
+    if (tx == null) throw SecureChannelException('not established');
+    return frame(await tx.encrypt(plaintext));
+  });
+
+  Future<List<SecureChannelEvent>> _receiveNow(List<int> bytes) async {
     final events = <SecureChannelEvent>[];
     for (final message in _framer.receive(bytes)) {
       final hs = _handshake;
@@ -93,13 +111,6 @@ class SecureChannel {
       }
     }
     return events;
-  }
-
-  /// Encrypts and frames one application message.
-  Future<Uint8List> encrypt(List<int> plaintext) async {
-    final tx = _send;
-    if (tx == null) throw SecureChannelException('not established');
-    return frame(await tx.encrypt(plaintext));
   }
 
   void _checkPeer(Uint8List? key) {

@@ -132,6 +132,9 @@ public final class HostController {
     }
 
     private func handle(_ envelope: BSEnvelope, from id: BLEPeripheralService.LinkID) throws {
+        if case .termInput = envelope.body {} else {
+            log("link \(id) received \(envelope.body.map { String(describing: $0).prefix(60) } ?? "empty envelope")")
+        }
         switch envelope.body {
         case .ping(let ping):
             try send(BSEnvelope.with { $0.pong = BSPong.with { $0.nonce = ping.nonce } }, to: id)

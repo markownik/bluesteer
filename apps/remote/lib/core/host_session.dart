@@ -46,7 +46,7 @@ class HostSession {
         }
       } catch (e, st) {
         if (!established.isCompleted) established.completeError(e, st);
-        session._envelopes.addError(e, st);
+        session._fail(e, st);
       }
     }, onDone: () {
       if (!established.isCompleted) established.completeError(StateError('link closed during handshake'));
@@ -60,6 +60,15 @@ class HostSession {
       rethrow;
     }
     return session;
+  }
+
+  /// A broken channel fails whoever is waiting, instead of leaving them to time out.
+  void _fail(Object error, StackTrace st) {
+    for (final pong in _pendingPongs.values) {
+      if (!pong.isCompleted) pong.completeError(error, st);
+    }
+    _pendingPongs.clear();
+    _envelopes.addError(error, st);
   }
 
   void _handle(Envelope e) {

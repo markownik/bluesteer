@@ -21,7 +21,7 @@ login shell in a PTY ──► headless SwiftTerm ──► deflate  ─BLE─�
 | `packages/bluesteer_protocol_dart` | Dart: the same, for the remote |
 | `apps/host` | macOS menu-bar app (`BlueSteerHost`), shared `HostCore`, and the `bluesteer` command line tool (`run` works; `hook`, `sessions`, `status` are stubs for Phase 3) |
 | `apps/remote` | Flutter remote app |
-| `tools` | `pty-recorder`, `term-bench`, `ble-bench-peripheral` and the Flutter `ble-bench-central` |
+| `tools` | `pty-recorder`, `term-bench`, `ble-bench-peripheral`, the Flutter `ble-bench-central`, and `ios-ui-driver` (an XCUITest bundle that taps, types and screenshots the remote on a USB-connected iPhone from the Mac) |
 
 ## Session sources
 
