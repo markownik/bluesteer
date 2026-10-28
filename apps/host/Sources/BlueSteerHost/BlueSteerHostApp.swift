@@ -6,6 +6,7 @@ import SwiftUI
 struct BlueSteerHostApp: App {
     @State private var controller: HostController? = {
         do {
+            HookInstaller.refreshCLILink()
             let c = try HostController(store: try PairingStore())
             // Development aid: `BlueSteerHost --pair` starts pairing at launch, prints the QR
             // payload and confirms code pairings by itself (printing the code).
@@ -59,6 +60,44 @@ struct MenuContent: View {
                 }
             }
         }
+        Divider()
+        if hooksInstalled {
+            Button("Remove Claude Code hooks") { changeHooks(install: false) }
+        } else {
+            Button("Install Claude Code hooks…") { changeHooks(install: true) }
+        }
+        Toggle("Start at login", isOn: Binding(
+            get: { LoginItem.isEnabled },
+            set: { on in
+                do { try LoginItem.setEnabled(on) } catch { NSApp.presentError(error) }
+                if LoginItem.requiresApproval { LoginItem.openSystemSettings() }
+                menuRefresh += 1
+            }))
+            .disabled(!LoginItem.isAvailable)
+        Button("Show audit log") { NSWorkspace.shared.open(AuditLog.shared.url) }
+    }
+
+    @State private var menuRefresh = 0
+    private var hooksInstalled: Bool { _ = menuRefresh; return HookInstaller.isInstalled() }
+
+    /// Confirms, then edits ~/.claude/settings.json (backed up first).
+    private func changeHooks(install: Bool) {
+        let alert = NSAlert()
+        alert.messageText = install ? "Install Claude Code hooks?" : "Remove Claude Code hooks?"
+        alert.informativeText = install
+            ? "BlueSteer adds command hooks for \(HookInstaller.events.joined(separator: ", ")) to \(HookInstaller.settingsURL.path) so the phone can show when Claude is working, waiting for input or waiting for permission. Each hook runs:\n\n\(HookInstaller.command(for: "<Event>"))\n\nIt exits at once for sessions BlueSteer does not bridge. A backup is kept next to the file."
+            : "The BlueSteer entries are removed from \(HookInstaller.settingsURL.path); other hooks stay."
+        alert.addButton(withTitle: install ? "Install" : "Remove")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            if install { try HookInstaller.install() } else { try HookInstaller.uninstall() }
+            AuditLog.shared.record(install ? "hooks installed file=\(HookInstaller.settingsURL.path)" : "hooks removed file=\(HookInstaller.settingsURL.path)")
+        } catch {
+            NSApp.presentError(error)
+        }
+        menuRefresh += 1
     }
 
     private var bluetoothStatus: String {

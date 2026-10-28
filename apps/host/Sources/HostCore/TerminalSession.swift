@@ -19,6 +19,8 @@ public protocol TerminalSession: AnyObject {
     /// May be ignored by sessions whose size belongs to another terminal.
     func resize(rows: Int, cols: Int)
     func stop(signal: Int32)
+    /// Status learned from hooks (never `.exited`; the session reports that itself).
+    func setStatus(_ status: BSSessionStatus)
     /// Full-screen state for a newly subscribed remote, with up to `scrollbackLines` of history first.
     func snapshot(scrollbackLines: Int) -> Data
 }

@@ -75,6 +75,27 @@ public final class SessionHub {
         sessions[id]?.stop(signal: signal == 0 ? SIGTERM : signal)
     }
 
+    /// Applies a Claude Code hook event to the session it came from (SPEC.md §4.1).
+    public func hook(_ e: HookEvent) {
+        guard let session = sessions[SessionID(rawValue: e.session)], session.status != .exited else { return }
+        let status: BSSessionStatus?
+        switch e.event {
+        case "UserPromptSubmit": status = .busy
+        case "Notification":
+            switch e.notificationType {
+            case "permission_prompt": status = .waitingPermission
+            case "idle_prompt": status = .waitingInput
+            default: status = nil
+            }
+        case "Stop", "SessionStart": status = .waitingInput
+        case "SessionEnd": status = .idle
+        default: status = nil
+        }
+        guard let status, status != session.status else { return }
+        session.setStatus(status)
+        onSessionChanged?(session)
+    }
+
     /// Forgets an exited session.
     public func remove(_ id: SessionID) {
         guard sessions[id]?.status == .exited else { return }

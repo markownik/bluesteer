@@ -33,6 +33,7 @@ class _TerminalPageState extends State<TerminalPage> {
   Int64 _lastSeq = Int64.ZERO;
   String _status = 'connecting…';
   late String _cwd = widget.cwd;
+  SessionStatus? _sessionStatus;
   int _cmdId = 1;
   int _subscribeCmdId = 0;
   bool _subscribed = false;
@@ -129,6 +130,7 @@ class _TerminalPageState extends State<TerminalPage> {
       final st = e.sessionState;
       setState(() {
         _cwd = st.cwd;
+        _sessionStatus = st.status;
         if (st.status == SessionStatus.SESSION_STATUS_EXITED) _status = 'exited (${st.exitCode})';
       });
     }
@@ -148,10 +150,23 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   Color get _statusColor {
-    if (_status == 'live') return Colors.green;
+    if (_status == 'live') {
+      return switch (_sessionStatus) {
+        SessionStatus.SESSION_STATUS_WAITING_PERMISSION => Colors.orange,
+        SessionStatus.SESSION_STATUS_BUSY => Colors.lightBlue,
+        _ => Colors.green,
+      };
+    }
     if (_status.startsWith('connecting') || _status.startsWith('reconnecting')) return Colors.amber;
     return Colors.red;
   }
+
+  /// What Claude is doing, as learned from hooks on the host (SPEC.md §4.1).
+  String? get _sessionLabel => switch (_sessionStatus) {
+        SessionStatus.SESSION_STATUS_WAITING_PERMISSION => 'needs permission',
+        SessionStatus.SESSION_STATUS_WAITING_INPUT => 'waiting for input',
+        _ => null,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -171,7 +186,7 @@ class _TerminalPageState extends State<TerminalPage> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.hostName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-              Text(_cwd,
+              Text(_sessionLabel == null ? _cwd : '$_cwd  ·  $_sessionLabel',
                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   overflow: TextOverflow.ellipsis),
             ]),

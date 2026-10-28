@@ -5,7 +5,7 @@ import Foundation
 /// A terminal the user runs through `bluesteer run`: the wrapper owns the PTY
 /// and streams its output here; input from remotes goes back over the socket.
 public final class WrappedSession: EmulatedSession, TerminalSession {
-    public let id = SessionID()
+    public let id: SessionID
     public let hello: WrapperHello
     public var cwd: String
     public private(set) var status: BSSessionStatus = .busy
@@ -17,6 +17,7 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
 
     init(hello: WrapperHello, fd: Int32) {
         self.hello = hello
+        id = SessionID(rawValue: hello.sessionId ?? UUID().uuidString)
         cwd = hello.cwd
         self.fd = fd
         super.init(rows: hello.rows, cols: hello.cols)
@@ -38,6 +39,11 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
     func closed() {
         status = .exited
         onExit?()
+    }
+
+    public func setStatus(_ status: BSSessionStatus) {
+        guard self.status != .exited, status != .exited else { return }
+        self.status = status
     }
 
     public func write(_ data: Data) {
@@ -67,6 +73,7 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
 /// Listens on the local Unix socket for `bluesteer run` wrappers.
 public final class WrapperSocketServer {
     public var onSession: ((WrappedSession) -> Void)?
+    public var onHook: ((HookEvent) -> Void)?
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private var connections: [Int32: (parser: WrapperFrameParser, session: WrappedSession?, source: DispatchSourceRead)] = [:]
@@ -118,6 +125,8 @@ public final class WrapperSocketServer {
                 let session = WrappedSession(hello: hello, fd: fd)
                 conn.session = session
                 DispatchQueue.main.async { self.onSession?(session) }
+            } else if frame.type == WrapperFrame.hook, let event = try? JSONDecoder().decode(HookEvent.self, from: frame.payload) {
+                DispatchQueue.main.async { self.onHook?(event) }
             } else if let session = conn.session {
                 DispatchQueue.main.async { session.received(frame) }
             }

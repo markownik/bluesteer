@@ -82,6 +82,7 @@ public final class HostController {
             self?.audit.record("session started id=\(st.sessionID) source=\(st.source) command=\"\(st.command)\" cwd=\(st.cwd)")
         }
         wrapperServer.onSession = { [weak self] session in self?.hub.add(session) }
+        wrapperServer.onHook = { [weak self] event in self?.hub.hook(event) }
         try wrapperServer.start()
         audit.record("host started version=\(HostInfo.version) name=\"\(displayName)\"")
     }

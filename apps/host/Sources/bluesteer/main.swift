@@ -1,7 +1,8 @@
 // bluesteer: command line companion of the BlueSteer host app.
 //
 //   bluesteer run <command...>   run a command in this terminal and bridge it to the host app
-//   bluesteer hook <event>       relay a Claude/Copilot hook event to the host app (Phase 3)
+//   bluesteer hook <event>       relay a Claude Code hook event to the host app (exits 0 at once)
+//   bluesteer hooks install|remove   add or remove the hook entries in ~/.claude/settings.json
 //   bluesteer sessions           list bridged sessions (Phase 3)
 //   bluesteer status             show host app and Bluetooth status (Phase 3)
 
@@ -14,14 +15,44 @@ switch args.first {
 case "run":
     guard args.count > 1 else { fputs("usage: bluesteer run <command...>\n", stderr); exit(64) }
     exit(runWrapped(Array(args.dropFirst())))
-case "hook", "sessions", "status":
+case "hook":
+    guard args.count > 1 else { fputs("usage: bluesteer hook <Event>\n", stderr); exit(64) }
+    exit(relayHook(args[1]))
+case "hooks":
+    HookInstaller.refreshCLILink()
+    do {
+        switch args.dropFirst().first {
+        case "install": try HookInstaller.install(); print("hooks installed in \(HookInstaller.settingsURL.path)")
+        case "remove": try HookInstaller.uninstall(); print("hooks removed from \(HookInstaller.settingsURL.path)")
+        default: print(HookInstaller.isInstalled() ? "installed" : "not installed"); exit(HookInstaller.isInstalled() ? 0 : 1)
+        }
+    } catch { fputs("bluesteer hooks: \(error.localizedDescription)\n", stderr); exit(1) }
+case "sessions", "status":
     fputs("bluesteer \(args[0]): not implemented yet\n", stderr)
     exit(2)
 case "--version":
     print(HostInfo.version)
 default:
-    print("usage: bluesteer run <command...> | hook <event> | sessions | status")
+    print("usage: bluesteer run <command...> | hook <Event> | hooks [install|remove] | sessions | status")
     exit(64)
+}
+
+/// Forwards one Claude Code hook event to the host app. Never fails the hook:
+/// without `BLUESTEER_SESSION` (a session the host does not bridge) or without
+/// a running host it just exits 0.
+func relayHook(_ event: String) -> Int32 {
+    guard let session = ProcessInfo.processInfo.environment["BLUESTEER_SESSION"], !session.isEmpty else { return 0 }
+    var notificationType: String?
+    if isatty(STDIN_FILENO) == 0,
+       let json = try? JSONSerialization.jsonObject(with: FileHandle.standardInput.readDataToEndOfFile()) as? [String: Any] {
+        notificationType = json["notification_type"] as? String
+    }
+    let sock = connectToHost()
+    guard sock >= 0 else { return 0 }
+    let payload = try! JSONEncoder().encode(HookEvent(event: event, session: session, notificationType: notificationType))
+    sendFrame(sock, WrapperFrame.hook, payload)
+    close(sock)
+    return 0
 }
 
 /// Runs `command` in a PTY attached to this terminal and mirrors it to the host app.
@@ -34,7 +65,8 @@ func runWrapped(_ command: [String]) -> Int32 {
 
     var master: Int32 = 0
     var childTermios = originalTermios
-    setenv("BLUESTEER_SESSION", UUID().uuidString, 1)
+    let sessionID = UUID().uuidString
+    setenv("BLUESTEER_SESSION", sessionID, 1)
     let pid: pid_t = stdinIsTTY ? forkpty(&master, nil, &childTermios, &ws) : forkpty(&master, nil, nil, &ws)
     if pid < 0 { perror("forkpty"); return 1 }
     if pid == 0 {
@@ -47,7 +79,7 @@ func runWrapped(_ command: [String]) -> Int32 {
     let sock = connectToHost()
     if sock >= 0 {
         let hello = WrapperHello(command: command, cwd: FileManager.default.currentDirectoryPath,
-                                 rows: Int(ws.ws_row), cols: Int(ws.ws_col), pid: pid)
+                                 rows: Int(ws.ws_row), cols: Int(ws.ws_col), pid: pid, sessionId: sessionID)
         sendFrame(sock, WrapperFrame.hello, try! JSONEncoder().encode(hello))
     } else {
         fputs("bluesteer: host app not running, command is not bridged\n", stderr)

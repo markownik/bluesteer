@@ -94,6 +94,11 @@ public final class PtySession: EmulatedSession, TerminalSession {
         terminal.resize(cols: cols, rows: rows)
     }
 
+    public func setStatus(_ status: BSSessionStatus) {
+        guard self.status != .exited, status != .exited else { return }
+        self.status = status
+    }
+
     public func stop(signal sig: Int32 = SIGTERM) {
         guard status != .exited else { return }
         kill(pid, sig)
