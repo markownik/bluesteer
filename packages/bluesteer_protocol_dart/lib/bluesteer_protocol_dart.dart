@@ -5,4 +5,5 @@
 library;
 
 export 'src/framing.dart';
+export 'src/noise/noise_handshake.dart';
 export 'src/protocol_version.dart';
