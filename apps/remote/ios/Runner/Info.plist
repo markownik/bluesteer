@@ -2,6 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.bluesteer.pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bluesteer</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>BlueSteer connects to your Mac over Bluetooth to show and control terminal sessions.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>BlueSteer scans the pairing QR code shown by the Mac.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'dev/replay_page.dart';
+import 'core/identity.dart';
+import 'ui/hosts_page.dart';
 
 void main() => runApp(const BlueSteerRemoteApp());
 
-/// BlueSteer Remote. During Phase 0 it opens the development replay page;
-/// the real navigation (hosts, sessions, terminal) arrives in Phase 1–2.
+/// BlueSteer Remote: an offline Bluetooth terminal for agent sessions on a Mac.
 class BlueSteerRemoteApp extends StatelessWidget {
   const BlueSteerRemoteApp({super.key});
 
@@ -14,7 +14,14 @@ class BlueSteerRemoteApp extends StatelessWidget {
     return MaterialApp(
       title: 'BlueSteer',
       theme: ThemeData.dark(useMaterial3: true),
-      home: const ReplayPage(),
+      home: FutureBuilder<Identity>(
+        future: Identity.load(),
+        builder: (context, snapshot) {
+          final identity = snapshot.data;
+          if (identity == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return HostsPage(identity: identity);
+        },
+      ),
     );
   }
 }

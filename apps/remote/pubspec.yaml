@@ -7,8 +7,15 @@ environment:
   sdk: ^3.13.7
 
 dependencies:
+  app_links: ^7.2.2
+  bluesteer_protocol_dart:
+    path: ../../packages/bluesteer_protocol_dart
+  fixnum: ^1.1.1
   flutter:
     sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  mobile_scanner: ^7.4.2
+  universal_ble: ^3.1.2
   xterm: ^4.0.0
 
 dev_dependencies:
