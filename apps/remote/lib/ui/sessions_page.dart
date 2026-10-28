@@ -107,7 +107,7 @@ class _SessionsPageState extends State<SessionsPage> {
                 for (final s in list)
                   ListTile(
                     leading: const Icon(Icons.terminal),
-                    title: Text(widget.session.displayPath(s.cwd)),
+                    title: Text(s.cwd),
                     subtitle: Text(s.source == SessionSource.SESSION_SOURCE_WRAPPED ? '${_commandOf(s)}  ·  your terminal' : _commandOf(s)),
                     onTap: () => _open(s.sessionId, s.cwd),
                   ),

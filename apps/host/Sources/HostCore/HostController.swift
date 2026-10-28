@@ -186,7 +186,6 @@ public final class HostController {
                 $0.protocolVersion = protocolVersion
                 $0.hostName = displayName
                 $0.hostVersion = HostInfo.version
-                $0.homeDir = NSHomeDirectory()
             }
         }
     }

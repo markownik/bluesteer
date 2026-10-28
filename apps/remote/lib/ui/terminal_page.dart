@@ -140,7 +140,7 @@ class _TerminalPageState extends State<TerminalPage> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.hostName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-              Text(widget.session.displayPath(_cwd),
+              Text(_cwd,
                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   overflow: TextOverflow.ellipsis),
             ]),

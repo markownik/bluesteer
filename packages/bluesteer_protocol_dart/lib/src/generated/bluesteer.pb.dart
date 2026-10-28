@@ -463,14 +463,12 @@ class HostHello extends $pb.GeneratedMessage {
     $core.String? hostName,
     $core.String? hostVersion,
     $core.Iterable<$core.String>? capabilities,
-    $core.String? homeDir,
   }) {
     final result = HostHello._();
     if (protocolVersion != null) result.protocolVersion = protocolVersion;
     if (hostName != null) result.hostName = hostName;
     if (hostVersion != null) result.hostVersion = hostVersion;
     if (capabilities != null) result.capabilities.addAll(capabilities);
-    if (homeDir != null) result.homeDir = homeDir;
     return result;
   }
 
@@ -492,7 +490,6 @@ class HostHello extends $pb.GeneratedMessage {
     ..aOS(2, _omitFieldNames ? '' : 'hostName')
     ..aOS(3, _omitFieldNames ? '' : 'hostVersion')
     ..pPS(4, _omitFieldNames ? '' : 'capabilities')
-    ..aOS(5, _omitFieldNames ? '' : 'homeDir')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -544,15 +541,6 @@ class HostHello extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(4)
   $pb.PbList<$core.String> get capabilities => $_getList(3);
-
-  @$pb.TagNumber(5)
-  $core.String get homeDir => $_getSZ(4);
-  @$pb.TagNumber(5)
-  set homeDir($core.String value) => $_setString(4, value);
-  @$pb.TagNumber(5)
-  $core.bool hasHomeDir() => $_has(4);
-  @$pb.TagNumber(5)
-  void clearHomeDir() => $_clearField(5);
 }
 
 class SessionState extends $pb.GeneratedMessage {
