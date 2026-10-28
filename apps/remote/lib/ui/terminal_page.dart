@@ -31,6 +31,7 @@ class _TerminalPageState extends State<TerminalPage> {
   Int64 _lastSeq = Int64.ZERO;
   String _status = 'connecting…';
   int _cmdId = 1;
+  bool _subscribed = false;
 
   @override
   void initState() {
@@ -38,10 +39,17 @@ class _TerminalPageState extends State<TerminalPage> {
     _utf8 = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(StringConversionSink.fromStringSink(_TerminalSink(terminal)));
     terminal.onOutput = (data) => _send(Envelope()..termInput = (TermInput()..sessionId = widget.sessionId..data = utf8.encode(data)));
-    terminal.onResize = (w, h, _, _) => _send(Envelope()
-      ..resize = (Resize()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId..rows = h..cols = w));
+    // The view sets the terminal size once it is laid out; subscribe with that
+    // real size rather than the 80x24 default, so the host sizes the PTY to us.
+    terminal.onResize = (w, h, _, _) {
+      if (!_subscribed) {
+        _subscribed = true;
+        _subscribe();
+      } else {
+        _send(Envelope()..resize = (Resize()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId..rows = h..cols = w));
+      }
+    };
     _sub = widget.session.envelopes.listen(_onEnvelope, onError: (e) => setState(() => _status = 'error: $e'));
-    _subscribe();
   }
 
   void _subscribe() {
@@ -68,6 +76,7 @@ class _TerminalPageState extends State<TerminalPage> {
       _inflater = ZLibDecoder(raw: true).startChunkedConversion(_utf8);
       final vt = snap.compressed ? ZLibDecoder(raw: true).convert(snap.vt) : snap.vt;
       if (snap.rows != terminal.viewHeight || snap.cols != terminal.viewWidth) {
+        // A session whose size we do not control (e.g. wrapped): follow it.
         terminal.resize(snap.cols, snap.rows);
       }
       _utf8.add(Uint8List.fromList(vt));

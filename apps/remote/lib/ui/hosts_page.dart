@@ -8,6 +8,7 @@ import '../ble/host_link.dart';
 import '../core/host_session.dart';
 import '../core/identity.dart';
 import '../dev/replay_page.dart';
+import '../dev/term_test_page.dart';
 import 'pair_page.dart';
 import 'sessions_page.dart';
 
@@ -86,6 +87,11 @@ class _HostsPageState extends State<HostsPage> {
       appBar: AppBar(
         title: const Text('BlueSteer'),
         actions: [
+          IconButton(
+            tooltip: 'Terminal render test (dev)',
+            icon: const Icon(Icons.bug_report),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermTestPage())),
+          ),
           IconButton(
             tooltip: 'Replay a recording (dev)',
             icon: const Icon(Icons.terminal),

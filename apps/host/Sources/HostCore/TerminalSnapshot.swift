@@ -9,7 +9,15 @@ enum TerminalSnapshot {
         var lastAttr: Attribute? = nil
         for row in 0..<t.rows {
             s += "\u{1b}[\(row + 1);1H"
+            // Trailing default-attribute blanks are not sent: they only cost
+            // bytes and reflow into extra lines when the remote is narrower.
+            var last = -1
             for col in 0..<t.cols {
+                if let cd = t.getCharData(col: col, row: row), !(isBlank(cd.getCharacter()) && cd.attribute.bg == .defaultColor && !cd.attribute.style.contains(.inverse)) {
+                    last = col
+                }
+            }
+            for col in 0..<(last + 1) {
                 guard let cd = t.getCharData(col: col, row: row) else { continue }
                 if cd.attribute != lastAttr {
                     s += sgr(cd.attribute)
@@ -18,6 +26,7 @@ enum TerminalSnapshot {
                 let ch = cd.getCharacter()
                 s.append(ch == "\0" ? " " : ch)
             }
+            s += "\u{1b}[K"
         }
         let cursor = t.getCursorLocation()
         s += "\u{1b}[0m\u{1b}[\(cursor.y + 1);\(cursor.x + 1)H"
@@ -25,6 +34,8 @@ enum TerminalSnapshot {
         if t.bracketedPasteMode { s += "\u{1b}[?2004h" }
         return Data(s.utf8)
     }
+
+    private static func isBlank(_ c: Character) -> Bool { c == " " || c == "\0" }
 
     private static func sgr(_ a: Attribute) -> String {
         var codes = ["0"]
