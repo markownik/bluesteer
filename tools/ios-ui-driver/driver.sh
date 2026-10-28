@@ -6,6 +6,7 @@
 #   UDID=00008120-... driver.sh build         # once (and after editing the test)
 #   driver.sh start                           # runs the test + iproxy in the background
 #   driver.sh tree | tap <label> | tapxy <x> <y> | press <label> | type <text>
+#   driver.sh swipe <x> <y> <x2> <y2> | home
 #   driver.sh shot out.png | info | activate | stop
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
@@ -31,7 +32,8 @@ case "$1" in
     curl -s "$url/quit" || true
     for p in xcodebuild iproxy; do [ -f "$here/build/$p.pid" ] && kill "$(cat "$here/build/$p.pid")" 2>/dev/null; done
     echo stopped ;;
-  tree|info|activate|terminate) curl -s "$url/$1" ;;
+  tree|info|activate|terminate|home) curl -s "$url/$1" ;;
+  swipe) curl -s "$url/swipe?x=$2&y=$3&x2=$4&y2=$5" ;;
   tap|press) curl -s "$url/$1?label=$(encode "$2")" ;;
   tapxy) curl -s "$url/tap?x=$2&y=$3" ;;
   type) curl -s "$url/type?text=$(encode "$2")" ;;

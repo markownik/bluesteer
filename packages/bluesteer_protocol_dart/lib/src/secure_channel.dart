@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart';
+
 import 'framing.dart';
 import 'noise/noise_handshake.dart';
 
@@ -12,14 +14,24 @@ import 'noise/noise_handshake.dart';
 class SecureChannel {
   SecureChannel._(this.isHost, this._handshake, this._pairedKeys, this._pinnedHostKey, this._pairing);
 
+  /// Six-digit pairing code both sides derive from the handshake hash (SPEC.md §2.1b).
+  static Future<String> pairingCode(List<int> handshakeHash) async {
+    final digest = await Sha256().hash([...utf8.encode('bluesteer pair code'), ...handshakeHash]);
+    final b = digest.bytes;
+    final n = (b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) % 1000000;
+    return n.toString().padLeft(6, '0');
+  }
+
   static final prologue = utf8.encode('bluesteer/1');
 
   /// The Mac side. [pairedKeys] are accepted remote static keys; [pairingPsk]
-  /// (when set) allows one new remote to pair with `Noise_XXpsk3`.
+  /// (when set) allows one new remote to pair with `Noise_XXpsk3`;
+  /// [acceptUnknownRemote] allows one to pair by code (SPEC.md §2.1b).
   static Future<SecureChannel> host({
     required NoiseKeyPair staticKey,
     required Set<String> pairedKeys,
     List<int>? pairingPsk,
+    bool acceptUnknownRemote = false,
   }) async {
     final hs = await NoiseHandshake.create(
       pattern: pairingPsk == null ? NoisePattern.xx : NoisePattern.xxpsk3,
@@ -28,7 +40,7 @@ class SecureChannel {
       staticKey: staticKey,
       psk: pairingPsk,
     );
-    return SecureChannel._(true, hs, pairedKeys, null, pairingPsk != null);
+    return SecureChannel._(true, hs, pairedKeys, null, pairingPsk != null || acceptUnknownRemote);
   }
 
   /// A remote. [pinnedHostKey] is the host's static key from pairing;
@@ -57,6 +69,8 @@ class SecureChannel {
   NoiseCipherState? _receive;
   final Framer _framer = Framer();
   Uint8List? remoteStaticKey;
+  /// The Noise handshake hash, available once established (pairing code).
+  Uint8List? handshakeHash;
   // Nonces are assigned across awaits, so overlapping calls (BLE chunks arrive
   // in bursts) must not interleave: every operation runs after the previous one.
   Future<void> _serial = Future.value();
@@ -101,6 +115,7 @@ class SecureChannel {
           _send = states.send;
           _receive = states.receive;
           remoteStaticKey = hs.remoteStatic;
+          handshakeHash = hs.handshakeHash;
           _handshake = null;
           events.add(EstablishedEvent(remoteStaticKey!));
         }

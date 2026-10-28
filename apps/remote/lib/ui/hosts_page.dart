@@ -9,6 +9,7 @@ import '../core/host_session.dart';
 import '../core/identity.dart';
 import 'pair_page.dart';
 import 'sessions_page.dart';
+import 'settings_page.dart';
 
 /// Paired Macs. Tapping one connects, authenticates and shows the ping time.
 class HostsPage extends StatefulWidget {
@@ -58,22 +59,31 @@ class _HostsPageState extends State<HostsPage> {
     await _session?.close();
     setState(() => _status[host.id] = 'Looking for ${host.name}…');
     await UniversalBle.requestPermissions();
-    final found = Completer<BleDevice>();
+    // Connect to each advertising Mac until one has the right INFO id.
+    final found = Completer<HostLink>();
     final tried = <String>{};
-    final sub = HostLink.scan().listen((d) => !found.isCompleted && tried.add(d.deviceId) ? found.complete(d) : null);
+    var busy = false;
+    final sub = HostLink.scan().listen((d) async {
+      if (busy || found.isCompleted || !tried.add(d.deviceId)) return;
+      busy = true;
+      try {
+        final link = await HostLink.connect(d);
+        if (link.info.id == host.id && !found.isCompleted) {
+          found.complete(link);
+        } else {
+          await link.close();
+        }
+      } catch (_) {
+      } finally {
+        busy = false;
+      }
+    });
     try {
-      final device = await found.future.timeout(const Duration(seconds: 15));
+      final link = await found.future.timeout(const Duration(seconds: 20));
       await sub.cancel();
       await UniversalBle.stopScan();
-      setState(() => _status[host.id] = 'Connecting…');
-      final link = await HostLink.connect(device);
-      if (link.info.id != host.id) {
-        await link.close();
-        setState(() => _status[host.id] = 'Found a different Mac (${link.info.name})');
-        return;
-      }
       setState(() => _status[host.id] = 'Authenticating…');
-      _session = await HostSession.establish(link, identity: widget.identity.keyPair, pinnedHostKey: host.hostKey);
+      _session = await HostSession.establish(link, identity: widget.identity, mode: PairingMode.paired, pinnedHostKey: host.hostKey);
       final rtt = await _session!.ping();
       setState(() => _status[host.id] = 'Connected · ${_session!.hello?.hostVersion ?? ''} · ping ${rtt.inMilliseconds} ms');
       _session!.link.connectionState.listen((c) {
@@ -92,7 +102,12 @@ class _HostsPageState extends State<HostsPage> {
   Widget build(BuildContext context) {
     final hosts = widget.identity.hosts;
     return Scaffold(
-      appBar: AppBar(title: const Text('BlueSteer')),
+      appBar: AppBar(title: const Text('BlueSteer'), actions: [
+        IconButton(
+          icon: const Icon(Icons.settings),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(identity: widget.identity))),
+        ),
+      ]),
       body: hosts.isEmpty
           ? const Center(child: Text('No paired Macs yet.\nOpen BlueSteer on your Mac, choose "Pair a remote…", then tap +.', textAlign: TextAlign.center))
           : ListView(

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// One end of an encrypted BlueSteer link (SPEC.md §2–3), independent of the
@@ -10,8 +11,9 @@ public final class SecureChannel {
 
     public enum Role {
         /// The Mac. `pairedKeys` are accepted remote static keys; `pairingPSK`
-        /// (when set) allows one new remote to pair with `Noise_XXpsk3`.
-        case host(pairedKeys: Set<Data>, pairingPSK: Data?)
+        /// (when set) allows one new remote to pair with `Noise_XXpsk3`;
+        /// `acceptUnknownRemote` allows one to pair by code (SPEC.md §2.1b).
+        case host(pairedKeys: Set<Data>, pairingPSK: Data?, acceptUnknownRemote: Bool = false)
         /// A remote. `pinnedHostKey` is the host's static key from pairing;
         /// `pairingPSK` is set while pairing (from the QR code).
         case remote(pinnedHostKey: Data?, pairingPSK: Data?)
@@ -39,8 +41,17 @@ public final class SecureChannel {
     private var receive: NoiseCipherState?
     private var framer = Framer()
     public private(set) var remoteStaticKey: Data?
+    /// The Noise handshake hash, available once established (pairing code, SPEC.md §2.1b).
+    public private(set) var handshakeHash: Data?
 
     public var isEstablished: Bool { send != nil }
+
+    /// Six-digit pairing code both sides derive from the handshake hash (SPEC.md §2.1b).
+    public static func pairingCode(handshakeHash h: Data) -> String {
+        let digest = SHA256.hash(data: Data("bluesteer pair code".utf8) + h)
+        let n = digest.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+        return String(format: "%06d", n % 1_000_000)
+    }
 
     public init(role: Role, staticKey: NoiseKeyPair) throws {
         self.role = role
@@ -48,7 +59,7 @@ public final class SecureChannel {
         let psk: Data?
         let initiator: Bool
         switch role {
-        case .host(_, let p): pairing = p != nil; psk = p; initiator = false
+        case .host(_, let p, _): pairing = p != nil; psk = p; initiator = false
         case .remote(_, let p): pairing = p != nil; psk = p; initiator = true
         }
         handshake = try NoiseHandshake(pattern: pairing ? .xxpsk3 : .xx, initiator: initiator,
@@ -101,8 +112,8 @@ public final class SecureChannel {
     private func checkPeer(_ key: Data?) throws {
         guard let key else { return }
         switch role {
-        case .host(let paired, let psk):
-            if psk == nil && !paired.contains(key) { throw Error.unknownRemote }
+        case .host(let paired, let psk, let acceptUnknown):
+            if psk == nil && !acceptUnknown && !paired.contains(key) { throw Error.unknownRemote }
         case .remote(let pinned, let psk):
             if psk == nil, let pinned, pinned != key { throw Error.hostKeyMismatch }
         }
@@ -113,6 +124,7 @@ public final class SecureChannel {
         send = states.send
         receive = states.receive
         remoteStaticKey = hs.remoteStatic
+        handshakeHash = hs.handshakeHash
         handshake = nil
     }
 }

@@ -37,6 +37,8 @@ message Envelope {
     StopSession stop_session = 28;
     Ping ping = 29;
     Pong pong = 30;
+    RemoteHello remote_hello = 31;
+    PairConfirm pair_confirm = 32;
   }
 }
 
@@ -148,6 +150,7 @@ message Subscribe {
   string session_id = 2;
   uint32 rows = 3;
   uint32 cols = 4;
+  uint32 scrollback_lines = 5;    // lines of history wanted in the first snapshot (0 = none)
 }
 
 message Unsubscribe {
@@ -203,4 +206,18 @@ message Ping {
 
 message Pong {
   uint64 nonce = 1;
+}
+
+// The remote's first message after the handshake, in every pairing mode.
+message RemoteHello {
+  uint32 protocol_version = 1;
+  string device_name = 2;         // shown by the host ("Marek's iPhone")
+  string app_version = 3;
+}
+
+// Pairing by code (SPEC.md §2.1): the user confirmed on the remote that both
+// screens show the same code. The host answers with HostHello (paired) or
+// Ack{ok:false} (rejected on the Mac).
+message PairConfirm {
+  uint64 cmd_id = 1;
 }

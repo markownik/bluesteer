@@ -1,6 +1,6 @@
 // Remote side of the cross-language SecureChannel check. See tools/Sources/channel-probe.
 //
-//   dart run tool/probe_remote.dart <port> <psk-hex>
+//   dart run tool/probe_remote.dart <port> <psk-hex|code>
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,7 +9,8 @@ import 'package:fixnum/fixnum.dart';
 
 Future<void> main(List<String> args) async {
   final port = int.parse(args[0]);
-  final psk = [for (var i = 0; i < args[1].length; i += 2) int.parse(args[1].substring(i, i + 2), radix: 16)];
+  final byCode = args[1] == 'code';
+  final psk = byCode ? null : [for (var i = 0; i < args[1].length; i += 2) int.parse(args[1].substring(i, i + 2), radix: 16)];
   final channel = await SecureChannel.remote(staticKey: await NoiseKeyPair.generate(), pairingPsk: psk);
   final socket = await Socket.connect('127.0.0.1', port);
   socket.add(await channel.start());
@@ -21,6 +22,7 @@ Future<void> main(List<String> args) async {
           socket.add(bytes);
         case EstablishedEvent(:final remoteStaticKey):
           stdout.writeln('established with host key ${SecureChannel.keyId(remoteStaticKey)}');
+          if (byCode) stdout.writeln('pairing code ${await SecureChannel.pairingCode(channel.handshakeHash!)}');
           final ping = Envelope()..ping = (Ping()..nonce = Int64(nonce));
           socket.add(await channel.encrypt(ping.writeToBuffer()));
         case MessageEvent(:final plaintext):

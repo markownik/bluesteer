@@ -1,19 +1,29 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:bluesteer_protocol_dart/bluesteer_protocol_dart.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// This device's Noise static key and the hosts it has paired with, kept in
-/// the platform secure storage (Keychain / Keystore).
+/// Version reported in `RemoteHello`.
+const appVersion = '0.1.0';
+
+/// This device's Noise static key, its name, and the hosts it has paired
+/// with, kept in the platform secure storage (Keychain / Keystore).
 class Identity {
-  Identity._(this.keyPair, this._storage, this.hosts);
+  Identity._(this.keyPair, this._storage, this.hosts, this._deviceName);
 
   static const _keyField = 'remote_static_key';
   static const _hostsField = 'paired_hosts';
+  static const _nameField = 'device_name';
 
   final NoiseKeyPair keyPair;
   final FlutterSecureStorage _storage;
   final List<PairedHost> hosts;
+  String _deviceName;
+
+  /// Shown by the host for this device ("Marek's iPhone"); sent in `RemoteHello`.
+  String get deviceName => _deviceName;
 
   static Future<Identity> load([FlutterSecureStorage? storage]) async {
     final s = storage ?? const FlutterSecureStorage();
@@ -29,7 +39,25 @@ class Identity {
     final hosts = hostsJson == null
         ? <PairedHost>[]
         : (jsonDecode(hostsJson) as List).map((e) => PairedHost.fromJson(e as Map<String, dynamic>)).toList();
-    return Identity._(keyPair, s, hosts);
+    final name = await s.read(key: _nameField) ?? await _defaultDeviceName();
+    return Identity._(keyPair, s, hosts, name);
+  }
+
+  static Future<String> _defaultDeviceName() async {
+    try {
+      final info = DeviceInfoPlugin();
+      if (Platform.isIOS) return (await info.iosInfo).modelName;
+      if (Platform.isAndroid) return (await info.androidInfo).model;
+      if (Platform.isMacOS) return (await info.macOsInfo).computerName;
+    } catch (_) {}
+    return Platform.operatingSystem;
+  }
+
+  Future<void> setDeviceName(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    _deviceName = trimmed;
+    await _storage.write(key: _nameField, value: trimmed);
   }
 
   Future<void> addHost(PairedHost host) async {

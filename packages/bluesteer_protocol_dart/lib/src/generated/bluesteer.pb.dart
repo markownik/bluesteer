@@ -42,6 +42,8 @@ enum Envelope_Body {
   stopSession,
   ping,
   pong,
+  remoteHello,
+  pairConfirm,
   notSet
 }
 
@@ -67,6 +69,8 @@ class Envelope extends $pb.GeneratedMessage {
     StopSession? stopSession,
     Ping? ping,
     Pong? pong,
+    RemoteHello? remoteHello,
+    PairConfirm? pairConfirm,
   }) {
     final result = Envelope._();
     if (hostHello != null) result.hostHello = hostHello;
@@ -89,6 +93,8 @@ class Envelope extends $pb.GeneratedMessage {
     if (stopSession != null) result.stopSession = stopSession;
     if (ping != null) result.ping = ping;
     if (pong != null) result.pong = pong;
+    if (remoteHello != null) result.remoteHello = remoteHello;
+    if (pairConfirm != null) result.pairConfirm = pairConfirm;
     return result;
   }
 
@@ -122,14 +128,38 @@ class Envelope extends $pb.GeneratedMessage {
     28: Envelope_Body.stopSession,
     29: Envelope_Body.ping,
     30: Envelope_Body.pong,
+    31: Envelope_Body.remoteHello,
+    32: Envelope_Body.pairConfirm,
     0: Envelope_Body.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'Envelope',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'bluesteer.v1'),
       createEmptyInstance: Envelope.$_createMessage)
-    ..oo(0,
-        [1, 2, 3, 4, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30])
+    ..oo(0, [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32
+    ])
     ..aOM<HostHello>(1, _omitFieldNames ? '' : 'hostHello',
         subBuilder: HostHello.$_createMessage)
     ..aOM<SessionList>(2, _omitFieldNames ? '' : 'sessionList',
@@ -169,6 +199,10 @@ class Envelope extends $pb.GeneratedMessage {
         subBuilder: Ping.$_createMessage)
     ..aOM<Pong>(30, _omitFieldNames ? '' : 'pong',
         subBuilder: Pong.$_createMessage)
+    ..aOM<RemoteHello>(31, _omitFieldNames ? '' : 'remoteHello',
+        subBuilder: RemoteHello.$_createMessage)
+    ..aOM<PairConfirm>(32, _omitFieldNames ? '' : 'pairConfirm',
+        subBuilder: PairConfirm.$_createMessage)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -211,6 +245,8 @@ class Envelope extends $pb.GeneratedMessage {
   @$pb.TagNumber(28)
   @$pb.TagNumber(29)
   @$pb.TagNumber(30)
+  @$pb.TagNumber(31)
+  @$pb.TagNumber(32)
   Envelope_Body whichBody() => _Envelope_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
   @$pb.TagNumber(2)
@@ -232,6 +268,8 @@ class Envelope extends $pb.GeneratedMessage {
   @$pb.TagNumber(28)
   @$pb.TagNumber(29)
   @$pb.TagNumber(30)
+  @$pb.TagNumber(31)
+  @$pb.TagNumber(32)
   void clearBody() => $_clearField($_whichOneof(0));
 
   /// Host → Remote
@@ -455,6 +493,28 @@ class Envelope extends $pb.GeneratedMessage {
   void clearPong() => $_clearField(30);
   @$pb.TagNumber(30)
   Pong ensurePong() => $_ensure(19);
+
+  @$pb.TagNumber(31)
+  RemoteHello get remoteHello => $_getN(20);
+  @$pb.TagNumber(31)
+  set remoteHello(RemoteHello value) => $_setField(31, value);
+  @$pb.TagNumber(31)
+  $core.bool hasRemoteHello() => $_has(20);
+  @$pb.TagNumber(31)
+  void clearRemoteHello() => $_clearField(31);
+  @$pb.TagNumber(31)
+  RemoteHello ensureRemoteHello() => $_ensure(20);
+
+  @$pb.TagNumber(32)
+  PairConfirm get pairConfirm => $_getN(21);
+  @$pb.TagNumber(32)
+  set pairConfirm(PairConfirm value) => $_setField(32, value);
+  @$pb.TagNumber(32)
+  $core.bool hasPairConfirm() => $_has(21);
+  @$pb.TagNumber(32)
+  void clearPairConfirm() => $_clearField(32);
+  @$pb.TagNumber(32)
+  PairConfirm ensurePairConfirm() => $_ensure(21);
 }
 
 class HostHello extends $pb.GeneratedMessage {
@@ -1337,12 +1397,14 @@ class Subscribe extends $pb.GeneratedMessage {
     $core.String? sessionId,
     $core.int? rows,
     $core.int? cols,
+    $core.int? scrollbackLines,
   }) {
     final result = Subscribe._();
     if (cmdId != null) result.cmdId = cmdId;
     if (sessionId != null) result.sessionId = sessionId;
     if (rows != null) result.rows = rows;
     if (cols != null) result.cols = cols;
+    if (scrollbackLines != null) result.scrollbackLines = scrollbackLines;
     return result;
   }
 
@@ -1364,6 +1426,8 @@ class Subscribe extends $pb.GeneratedMessage {
     ..aOS(2, _omitFieldNames ? '' : 'sessionId')
     ..aI(3, _omitFieldNames ? '' : 'rows', fieldType: $pb.PbFieldType.OU3)
     ..aI(4, _omitFieldNames ? '' : 'cols', fieldType: $pb.PbFieldType.OU3)
+    ..aI(5, _omitFieldNames ? '' : 'scrollbackLines',
+        fieldType: $pb.PbFieldType.OU3)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1421,6 +1485,15 @@ class Subscribe extends $pb.GeneratedMessage {
   $core.bool hasCols() => $_has(3);
   @$pb.TagNumber(4)
   void clearCols() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.int get scrollbackLines => $_getIZ(4);
+  @$pb.TagNumber(5)
+  set scrollbackLines($core.int value) => $_setUnsignedInt32(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasScrollbackLines() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearScrollbackLines() => $_clearField(5);
 }
 
 class Unsubscribe extends $pb.GeneratedMessage {
@@ -2155,6 +2228,150 @@ class Pong extends $pb.GeneratedMessage {
   $core.bool hasNonce() => $_has(0);
   @$pb.TagNumber(1)
   void clearNonce() => $_clearField(1);
+}
+
+/// The remote's first message after the handshake, in every pairing mode.
+class RemoteHello extends $pb.GeneratedMessage {
+  factory RemoteHello({
+    $core.int? protocolVersion,
+    $core.String? deviceName,
+    $core.String? appVersion,
+  }) {
+    final result = RemoteHello._();
+    if (protocolVersion != null) result.protocolVersion = protocolVersion;
+    if (deviceName != null) result.deviceName = deviceName;
+    if (appVersion != null) result.appVersion = appVersion;
+    return result;
+  }
+
+  RemoteHello._();
+
+  factory RemoteHello.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RemoteHello()..mergeFromBuffer(data, registry);
+  factory RemoteHello.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RemoteHello()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'RemoteHello',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'bluesteer.v1'),
+      createEmptyInstance: RemoteHello.$_createMessage)
+    ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
+        fieldType: $pb.PbFieldType.OU3)
+    ..aOS(2, _omitFieldNames ? '' : 'deviceName')
+    ..aOS(3, _omitFieldNames ? '' : 'appVersion')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RemoteHello clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RemoteHello copyWith(void Function(RemoteHello) updates) =>
+      super.copyWith((message) => updates(message as RemoteHello))
+          as RemoteHello;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use RemoteHello() / RemoteHello.new instead')
+  static RemoteHello create() => RemoteHello._();
+  static $pb.GeneratedMessage $_createMessage() => RemoteHello._();
+  @$core.override
+  RemoteHello createEmptyInstance() => RemoteHello._();
+  @$core.pragma('dart2js:noInline')
+  static RemoteHello getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<RemoteHello>(
+          RemoteHello.$_createMessage);
+  static RemoteHello? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get protocolVersion => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set protocolVersion($core.int value) => $_setUnsignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasProtocolVersion() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearProtocolVersion() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get deviceName => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceName($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceName() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceName() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get appVersion => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set appVersion($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAppVersion() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAppVersion() => $_clearField(3);
+}
+
+/// Pairing by code (SPEC.md §2.1): the user confirmed on the remote that both
+/// screens show the same code. The host answers with HostHello (paired) or
+/// Ack{ok:false} (rejected on the Mac).
+class PairConfirm extends $pb.GeneratedMessage {
+  factory PairConfirm({
+    $fixnum.Int64? cmdId,
+  }) {
+    final result = PairConfirm._();
+    if (cmdId != null) result.cmdId = cmdId;
+    return result;
+  }
+
+  PairConfirm._();
+
+  factory PairConfirm.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PairConfirm()..mergeFromBuffer(data, registry);
+  factory PairConfirm.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PairConfirm()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PairConfirm',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'bluesteer.v1'),
+      createEmptyInstance: PairConfirm.$_createMessage)
+    ..a<$fixnum.Int64>(1, _omitFieldNames ? '' : 'cmdId', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PairConfirm clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PairConfirm copyWith(void Function(PairConfirm) updates) =>
+      super.copyWith((message) => updates(message as PairConfirm))
+          as PairConfirm;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use PairConfirm() / PairConfirm.new instead')
+  static PairConfirm create() => PairConfirm._();
+  static $pb.GeneratedMessage $_createMessage() => PairConfirm._();
+  @$core.override
+  PairConfirm createEmptyInstance() => PairConfirm._();
+  @$core.pragma('dart2js:noInline')
+  static PairConfirm getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<PairConfirm>(
+          PairConfirm.$_createMessage);
+  static PairConfirm? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get cmdId => $_getI64(0);
+  @$pb.TagNumber(1)
+  set cmdId($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCmdId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCmdId() => $_clearField(1);
 }
 
 const $core.bool _omitFieldNames =

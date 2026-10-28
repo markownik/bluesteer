@@ -22,6 +22,8 @@ public final class SessionHub {
         var deflate = DeflateStream()
         var pending = Data()
         var needsSnapshot = true
+        /// History lines wanted in the first snapshot (SPEC.md §4.4); 0 afterwards.
+        var scrollbackLines = 0
         var seq: UInt64 = 0
     }
 
@@ -36,6 +38,8 @@ public final class SessionHub {
     public var pendingBytes: ((LinkID) -> Int)?
     /// Called when any session's state changes (for broadcasting SessionState).
     public var onSessionChanged: ((TerminalSession) -> Void)?
+    /// Called once when a session is registered (audit).
+    public var onSessionAdded: ((TerminalSession) -> Void)?
 
     public init() {}
 
@@ -63,6 +67,7 @@ public final class SessionHub {
             onSessionChanged?(session)
         }
         startTimer()
+        onSessionAdded?(session)
         onSessionChanged?(session)
     }
 
@@ -79,10 +84,12 @@ public final class SessionHub {
 
     // MARK: Subscriptions
 
-    public func subscribe(link: LinkID, session id: SessionID, rows: Int, cols: Int) {
+    public func subscribe(link: LinkID, session id: SessionID, rows: Int, cols: Int, scrollbackLines: Int = 0) {
         guard let session = sessions[id] else { return }
         session.resize(rows: rows, cols: cols)
-        subscriptions[link, default: [:]][id] = Subscription()
+        let sub = Subscription()
+        sub.scrollbackLines = scrollbackLines
+        subscriptions[link, default: [:]][id] = sub
         flush(link: link, session: session)
     }
 

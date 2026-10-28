@@ -10,6 +10,7 @@ public final class BLEPeripheralService: NSObject {
     static let txUUID = CBUUID(string: "7B5E5A6E-0002-4B1E-9C0E-5A2D2E1F0001")
     static let rxUUID = CBUUID(string: "7B5E5A6E-0003-4B1E-9C0E-5A2D2E1F0001")
     static let infoUUID = CBUUID(string: "7B5E5A6E-0004-4B1E-9C0E-5A2D2E1F0001")
+    static let statusUUID = CBUUID(string: "7B5E5A6E-0005-4B1E-9C0E-5A2D2E1F0001")
 
     public var onStateChange: ((CBManagerState) -> Void)?
     public var onLinkOpened: ((LinkID) -> Void)?
@@ -24,6 +25,7 @@ public final class BLEPeripheralService: NSObject {
     private let infoValue: Data
     private let localName: String
     private var centrals: [LinkID: CBCentral] = [:]
+    private var pairingOpen = false
     private var queues: [LinkID: Data] = [:]
     private let queue = DispatchQueue(label: "dev.bluesteer.ble")
 
@@ -51,6 +53,11 @@ public final class BLEPeripheralService: NSObject {
     /// Bytes queued for a link that have not been handed to CoreBluetooth yet.
     public func pendingBytes(for link: LinkID) -> Int {
         queue.sync { queues[link]?.count ?? 0 }
+    }
+
+    /// Bit 0 of the STATUS characteristic (SPEC.md §1.1): the pairing window is open.
+    public func setPairingOpen(_ open: Bool) {
+        queue.async { [self] in pairingOpen = open }
     }
 
     public func disconnectAll() {
@@ -81,8 +88,9 @@ extension BLEPeripheralService: CBPeripheralManagerDelegate {
         tx = CBMutableCharacteristic(type: Self.txUUID, properties: [.notify], value: nil, permissions: [.readable])
         let rx = CBMutableCharacteristic(type: Self.rxUUID, properties: [.writeWithoutResponse, .write], value: nil, permissions: [.writeable])
         let info = CBMutableCharacteristic(type: Self.infoUUID, properties: [.read], value: infoValue, permissions: [.readable])
+        let status = CBMutableCharacteristic(type: Self.statusUUID, properties: [.read], value: nil, permissions: [.readable])
         let service = CBMutableService(type: Self.serviceUUID, primary: true)
-        service.characteristics = [tx, rx, info]
+        service.characteristics = [tx, rx, info, status]
         p.removeAllServices()
         p.add(service)
     }
@@ -122,6 +130,12 @@ extension BLEPeripheralService: CBPeripheralManagerDelegate {
             }
             if r.characteristic.properties.contains(.write) { p.respond(to: r, withResult: .success) }
         }
+    }
+
+    public func peripheralManager(_ p: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        guard request.characteristic.uuid == Self.statusUUID else { p.respond(to: request, withResult: .attributeNotFound); return }
+        request.value = Data([pairingOpen ? 1 : 0])
+        p.respond(to: request, withResult: .success)
     }
 
     public func peripheralManagerIsReady(toUpdateSubscribers p: CBPeripheralManager) { pump() }

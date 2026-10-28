@@ -82,6 +82,20 @@ final class UIDriverUITests: XCTestCase {
                 tapped += 1
             }
             server.respond(request, body: "tapped \(tapped) keys")
+        case "/swipe":
+            // Drag from (x,y) to (x2,y2) in points, e.g. to scroll the terminal.
+            guard let x = Double(q["x"] ?? ""), let y = Double(q["y"] ?? ""),
+                  let x2 = Double(q["x2"] ?? ""), let y2 = Double(q["y2"] ?? "") else {
+                server.respond(request, status: 400, body: "need x=&y=&x2=&y2=")
+                return
+            }
+            let from = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y))
+            let to = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x2, dy: y2))
+            from.press(forDuration: 0.1, thenDragTo: to)
+            server.respond(request, body: "swiped \(x),\(y) -> \(x2),\(y2)")
+        case "/home":
+            XCUIDevice.shared.press(.home)
+            server.respond(request, body: "home")
         case "/screenshot":
             server.respond(request, type: "image/png", body: XCUIScreen.main.screenshot().pngRepresentation)
         default:

@@ -5,6 +5,32 @@ import 'package:bluesteer_protocol_dart/bluesteer_protocol_dart.dart';
 import 'package:fixnum/fixnum.dart';
 
 import '../ble/host_link.dart';
+import 'identity.dart';
+
+/// Handshake selector byte (SPEC.md §2.0).
+enum PairingMode {
+  psk(0x01),
+  paired(0x02),
+  code(0x03);
+
+  const PairingMode(this.selector);
+  final int selector;
+}
+
+/// A pairing by code (SPEC.md §2.1b) waiting for the user to compare codes.
+class PendingPairing {
+  PendingPairing._(this.session, this.code);
+  final HostSession session;
+  final String code;
+
+  /// The user saw the same code on the Mac. Completes with the session once
+  /// the Mac's user confirmed too; throws if the Mac rejected.
+  Future<HostSession> confirm() async {
+    await session.send(Envelope()..pairConfirm = (PairConfirm()..cmdId = Int64(1)));
+    await session._hello.future.timeout(const Duration(seconds: 120));
+    return session;
+  }
+}
 
 /// An authenticated, encrypted session with one host over a [HostLink].
 class HostSession {
@@ -14,21 +40,43 @@ class HostSession {
   final SecureChannel _channel;
   final _envelopes = StreamController<Envelope>.broadcast();
   final _pendingPongs = <int, Completer<void>>{};
+  final _hello = Completer<HostHello>();
   HostHello? hello;
 
   Stream<Envelope> get envelopes => _envelopes.stream;
   Uint8List get hostKey => _channel.remoteStaticKey!;
 
-  /// Runs the handshake. Pass [pairingPsk] from the QR code when pairing,
-  /// otherwise [pinnedHostKey] from a previous pairing.
+  /// Runs the handshake and the hellos. For [PairingMode.psk] pass the PSK from
+  /// the QR code; for [PairingMode.paired] the pinned host key. Returns once the
+  /// host sent its `HostHello`. Use [pairByCode] for [PairingMode.code].
   static Future<HostSession> establish(
     HostLink link, {
-    required NoiseKeyPair identity,
+    required Identity identity,
+    required PairingMode mode,
     List<int>? pairingPsk,
     List<int>? pinnedHostKey,
     Duration timeout = const Duration(seconds: 15),
   }) async {
-    final channel = await SecureChannel.remote(staticKey: identity, pairingPsk: pairingPsk, pinnedHostKey: pinnedHostKey);
+    final session = await _handshake(link, identity: identity, mode: mode, pairingPsk: pairingPsk, pinnedHostKey: pinnedHostKey, timeout: timeout);
+    await session._hello.future.timeout(timeout);
+    return session;
+  }
+
+  /// Handshake for pairing by code; the caller shows [PendingPairing.code].
+  static Future<PendingPairing> pairByCode(HostLink link, {required Identity identity}) async {
+    final session = await _handshake(link, identity: identity, mode: PairingMode.code, timeout: const Duration(seconds: 15));
+    return PendingPairing._(session, await SecureChannel.pairingCode(session._channel.handshakeHash!));
+  }
+
+  static Future<HostSession> _handshake(
+    HostLink link, {
+    required Identity identity,
+    required PairingMode mode,
+    List<int>? pairingPsk,
+    List<int>? pinnedHostKey,
+    required Duration timeout,
+  }) async {
+    final channel = await SecureChannel.remote(staticKey: identity.keyPair, pairingPsk: pairingPsk, pinnedHostKey: pinnedHostKey);
     final session = HostSession._(link, channel);
     final established = Completer<void>();
     late final StreamSubscription<Uint8List> sub;
@@ -50,15 +98,21 @@ class HostSession {
       }
     }, onDone: () {
       if (!established.isCompleted) established.completeError(StateError('link closed during handshake'));
+      session._fail(StateError('link closed'), StackTrace.current);
       session._envelopes.close();
     });
-    await link.write(await channel.start());
+    await link.write([mode.selector, ...await channel.start()]);
     try {
       await established.future.timeout(timeout);
     } catch (_) {
       await sub.cancel();
       rethrow;
     }
+    await session.send(Envelope()
+      ..remoteHello = (RemoteHello()
+        ..protocolVersion = protocolVersion
+        ..deviceName = identity.deviceName
+        ..appVersion = appVersion));
     return session;
   }
 
@@ -68,11 +122,19 @@ class HostSession {
       if (!pong.isCompleted) pong.completeError(error, st);
     }
     _pendingPongs.clear();
-    _envelopes.addError(error, st);
+    if (!_hello.isCompleted) _hello.completeError(error, st);
+    if (!_envelopes.isClosed) _envelopes.addError(error, st);
   }
 
   void _handle(Envelope e) {
-    if (e.hasHostHello()) hello = e.hostHello;
+    if (e.hasHostHello()) {
+      hello = e.hostHello;
+      if (!_hello.isCompleted) _hello.complete(e.hostHello);
+    }
+    if (e.hasAck() && !e.ack.ok && !_hello.isCompleted) {
+      // Only pairing by code gets an Ack before HostHello: the Mac rejected us.
+      _hello.completeError(StateError(e.ack.error.isEmpty ? 'rejected by the Mac' : e.ack.error));
+    }
     if (e.hasPong()) _pendingPongs.remove(e.pong.nonce.toInt())?.complete();
     _envelopes.add(e);
   }

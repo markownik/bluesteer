@@ -7,9 +7,11 @@ struct BlueSteerHostApp: App {
     @State private var controller: HostController? = {
         do {
             let c = try HostController(store: try PairingStore())
-            // Development aid: `BlueSteerHost --pair` starts pairing at launch and prints the QR payload.
+            // Development aid: `BlueSteerHost --pair` starts pairing at launch, prints the QR
+            // payload and confirms code pairings by itself (printing the code).
             if CommandLine.arguments.contains("--pair") {
                 setvbuf(stdout, nil, _IOLBF, 0)
+                c.autoConfirmPairing = true
                 print("PAIRING \(c.beginPairing())")
             }
             return c
@@ -75,17 +77,36 @@ struct PairingView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            if let payload = controller.qrPayload, let image = qrImage(payload) {
-                Text("Scan with BlueSteer Remote").font(.headline)
-                Image(nsImage: image).interpolation(.none).resizable().frame(width: 260, height: 260)
-                Text("or enter code \(controller.pairingCode ?? "")").font(.title3.monospacedDigit())
-                Text("The code is valid until a remote pairs or you close this window.")
+            if let pending = controller.pendingPairing {
+                Text("\(pending.deviceName) wants to pair").font(.headline)
+                Text(Self.spaced(pending.code)).font(.system(size: 40, weight: .semibold, design: .monospaced))
+                Text(pending.remoteConfirmed
+                     ? "Does the remote show the same code?"
+                     : "Does the remote show the same code? Confirm there too.")
+                    .font(.callout).multilineTextAlignment(.center)
+                HStack {
+                    Button("Reject", role: .destructive) { controller.rejectPairing() }
+                    Button("Pair") { controller.confirmPairing() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(pending.hostConfirmed)
+                }
+                if pending.hostConfirmed { Text("Waiting for the remote…").font(.caption).foregroundStyle(.secondary) }
+            } else if controller.pairingOpen, let payload = controller.qrPayload, let image = qrImage(payload) {
+                Text("Pair a remote").font(.headline)
+                Image(nsImage: image).interpolation(.none).resizable().frame(width: 220, height: 220)
+                Text("Scan this with BlueSteer Remote, or tap + on the phone, choose this Mac and compare the 6-digit code.")
+                    .font(.callout).multilineTextAlignment(.center)
+                Text("Valid for 2 minutes or until a remote pairs.")
                     .font(.caption).foregroundStyle(.secondary)
-            } else {
+            } else if let name = controller.lastPairedName {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 48)).foregroundStyle(.green)
-                Text("Remote paired").font(.headline)
+                Text("Paired with \(name)").font(.headline)
+            } else {
+                Image(systemName: "clock").font(.system(size: 48)).foregroundStyle(.secondary)
+                Text("Pairing ended").font(.headline)
+                Button("Start again") { controller.beginPairing() }
             }
-            Button(controller.pairingPSK == nil ? "Done" : "Cancel") {
+            Button(controller.pairingOpen ? "Cancel" : "Done") {
                 controller.endPairing()
                 dismissWindow(id: "pairing")
             }
@@ -94,6 +115,8 @@ struct PairingView: View {
         .frame(width: 340)
         .onDisappear { controller.endPairing() }
     }
+
+    static func spaced(_ code: String) -> String { String(code.prefix(3)) + " " + String(code.suffix(3)) }
 
     private func qrImage(_ text: String) -> NSImage? {
         let filter = CIFilter.qrCodeGenerator()

@@ -259,6 +259,24 @@ const Envelope$json = {
       '9': 0,
       '10': 'pong'
     },
+    {
+      '1': 'remote_hello',
+      '3': 31,
+      '4': 1,
+      '5': 11,
+      '6': '.bluesteer.v1.RemoteHello',
+      '9': 0,
+      '10': 'remoteHello'
+    },
+    {
+      '1': 'pair_confirm',
+      '3': 32,
+      '4': 1,
+      '5': 11,
+      '6': '.bluesteer.v1.PairConfirm',
+      '9': 0,
+      '10': 'pairConfirm'
+    },
   ],
   '8': [
     {'1': 'body'},
@@ -288,7 +306,10 @@ final $typed_data.Uint8List envelopeDescriptor = $convert.base64Decode(
     'GBsgASgLMh0uYmx1ZXN0ZWVyLnYxLkZldGNoU2Nyb2xsYmFja0gAUg9mZXRjaFNjcm9sbGJhY2'
     'sSPgoMc3RvcF9zZXNzaW9uGBwgASgLMhkuYmx1ZXN0ZWVyLnYxLlN0b3BTZXNzaW9uSABSC3N0'
     'b3BTZXNzaW9uEigKBHBpbmcYHSABKAsyEi5ibHVlc3RlZXIudjEuUGluZ0gAUgRwaW5nEigKBH'
-    'BvbmcYHiABKAsyEi5ibHVlc3RlZXIudjEuUG9uZ0gAUgRwb25nQgYKBGJvZHk=');
+    'BvbmcYHiABKAsyEi5ibHVlc3RlZXIudjEuUG9uZ0gAUgRwb25nEj4KDHJlbW90ZV9oZWxsbxgf'
+    'IAEoCzIZLmJsdWVzdGVlci52MS5SZW1vdGVIZWxsb0gAUgtyZW1vdGVIZWxsbxI+CgxwYWlyX2'
+    'NvbmZpcm0YICABKAsyGS5ibHVlc3RlZXIudjEuUGFpckNvbmZpcm1IAFILcGFpckNvbmZpcm1C'
+    'BgoEYm9keQ==');
 
 @$core.Deprecated('Use hostHelloDescriptor instead')
 const HostHello$json = {
@@ -490,13 +511,15 @@ const Subscribe$json = {
     {'1': 'session_id', '3': 2, '4': 1, '5': 9, '10': 'sessionId'},
     {'1': 'rows', '3': 3, '4': 1, '5': 13, '10': 'rows'},
     {'1': 'cols', '3': 4, '4': 1, '5': 13, '10': 'cols'},
+    {'1': 'scrollback_lines', '3': 5, '4': 1, '5': 13, '10': 'scrollbackLines'},
   ],
 };
 
 /// Descriptor for `Subscribe`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List subscribeDescriptor = $convert.base64Decode(
     'CglTdWJzY3JpYmUSFQoGY21kX2lkGAEgASgEUgVjbWRJZBIdCgpzZXNzaW9uX2lkGAIgASgJUg'
-    'lzZXNzaW9uSWQSEgoEcm93cxgDIAEoDVIEcm93cxISCgRjb2xzGAQgASgNUgRjb2xz');
+    'lzZXNzaW9uSWQSEgoEcm93cxgDIAEoDVIEcm93cxISCgRjb2xzGAQgASgNUgRjb2xzEikKEHNj'
+    'cm9sbGJhY2tfbGluZXMYBSABKA1SD3Njcm9sbGJhY2tMaW5lcw==');
 
 @$core.Deprecated('Use unsubscribeDescriptor instead')
 const Unsubscribe$json = {
@@ -635,3 +658,31 @@ const Pong$json = {
 /// Descriptor for `Pong`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List pongDescriptor =
     $convert.base64Decode('CgRQb25nEhQKBW5vbmNlGAEgASgEUgVub25jZQ==');
+
+@$core.Deprecated('Use remoteHelloDescriptor instead')
+const RemoteHello$json = {
+  '1': 'RemoteHello',
+  '2': [
+    {'1': 'protocol_version', '3': 1, '4': 1, '5': 13, '10': 'protocolVersion'},
+    {'1': 'device_name', '3': 2, '4': 1, '5': 9, '10': 'deviceName'},
+    {'1': 'app_version', '3': 3, '4': 1, '5': 9, '10': 'appVersion'},
+  ],
+};
+
+/// Descriptor for `RemoteHello`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List remoteHelloDescriptor = $convert.base64Decode(
+    'CgtSZW1vdGVIZWxsbxIpChBwcm90b2NvbF92ZXJzaW9uGAEgASgNUg9wcm90b2NvbFZlcnNpb2'
+    '4SHwoLZGV2aWNlX25hbWUYAiABKAlSCmRldmljZU5hbWUSHwoLYXBwX3ZlcnNpb24YAyABKAlS'
+    'CmFwcFZlcnNpb24=');
+
+@$core.Deprecated('Use pairConfirmDescriptor instead')
+const PairConfirm$json = {
+  '1': 'PairConfirm',
+  '2': [
+    {'1': 'cmd_id', '3': 1, '4': 1, '5': 4, '10': 'cmdId'},
+  ],
+};
+
+/// Descriptor for `PairConfirm`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pairConfirmDescriptor =
+    $convert.base64Decode('CgtQYWlyQ29uZmlybRIVCgZjbWRfaWQYASABKARSBWNtZElk');

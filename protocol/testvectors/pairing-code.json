@@ -1,0 +1,13 @@
+{
+  "spec": "SPEC.md \u00a72.1b",
+  "vectors": [
+    {
+      "handshake_hash": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "code": "324574"
+    },
+    {
+      "handshake_hash": "c8e5f64e846193be2a834104c2a009868d6c9f3bd3c186299888b488b2f1f58e",
+      "code": "964029"
+    }
+  ]
+}

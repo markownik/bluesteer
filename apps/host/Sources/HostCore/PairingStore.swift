@@ -43,6 +43,13 @@ public final class PairingStore {
         try save()
     }
 
+    /// Updates the name a remote reports in its `RemoteHello`.
+    public func rename(key: Data, name: String) throws {
+        guard let i = remotes.firstIndex(where: { $0.key == key }), remotes[i].name != name else { return }
+        remotes[i].name = name
+        try save()
+    }
+
     public func remove(key: Data) throws {
         remotes.removeAll { $0.key == key }
         try save()
