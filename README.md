@@ -4,7 +4,25 @@ Offline Bluetooth Low Energy terminal bridge for Claude Code, GitHub Copilot CLI
 
 A **Host** app on your Mac runs the agent session in a pseudo-terminal and advertises it over BLE. A **Remote** app on a phone or another computer, with no internet connection at all, attaches to that session as a real terminal: it sees the screen and types into it. Nothing goes through a relay server and nothing leaves the room.
 
-Status: Phase 0 (feasibility spikes). See `docs/` for the plan and threat model as they land.
+Status: Phase 2 of `docs/PLAN.md` works end to end on macOS + Android: pair by QR, open a login shell on the Mac from the phone, type into it, mirror a terminal you started yourself with `bluesteer run`. In v1 the remote opens plain shells only; you run `claude` or `copilot` inside them. Notifications, background sessions, iOS and packaging are still to come.
+
+## Try it (developer build)
+
+Host, on the Mac (Xcode 16+):
+
+```bash
+cd apps/host && swift build
+.build/debug/BlueSteerHost          # menu-bar app; "Pair a remote…" shows the QR code
+.build/debug/bluesteer run claude   # optional: mirror a session from your own terminal
+```
+
+Remote, on a phone (Flutter stable):
+
+```bash
+cd apps/remote && flutter run       # Android now; iOS needs a signing identity
+```
+
+On the phone tap **+**, scan the QR code, then tap the Mac: a terminal opens. "New terminal" starts another shell; exited ones disappear from the list. Tests: `swift test` in `apps/host` and `packages/BlueSteerProtocol`, `dart test` in `packages/bluesteer_protocol_dart`, `tools/gen-proto.sh --check` for schema drift, `tools/interop-test.sh` for Swift↔Dart handshakes.
 
 ## Layout
 
