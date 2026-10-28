@@ -13,6 +13,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>BlueSteer connects to your Mac over Bluetooth to show and control terminal sessions.</string>
 	<key>NSCameraUsageDescription</key>
@@ -22,7 +26,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Bluesteer Remote</string>
+	<string>BlueSteer</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

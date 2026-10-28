@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 import '../ble/host_link.dart';
+import '../platform/link_service.dart';
 import 'host_session.dart';
 import 'identity.dart';
 
@@ -42,6 +43,7 @@ class HostConnection {
   /// First connection; throws if the Mac cannot be reached.
   Future<void> connect() async {
     await _establish(await _findAndConnect());
+    await LinkService.start(host.name);
   }
 
   Future<void> send(Envelope e) {
@@ -55,6 +57,7 @@ class HostConnection {
   Future<void> close() async {
     _closed = true;
     state.value = LinkState.closed;
+    await LinkService.stop();
     await _teardown();
     await _envelopes.close();
     await _reconnected.close();

@@ -23,7 +23,7 @@ class TerminalPage extends StatefulWidget {
   State<TerminalPage> createState() => _TerminalPageState();
 }
 
-class _TerminalPageState extends State<TerminalPage> {
+class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver {
   final terminal = Terminal(maxLines: 5000);
   final _controller = TerminalController();
   StreamSubscription<Envelope>? _sub;
@@ -42,6 +42,7 @@ class _TerminalPageState extends State<TerminalPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _utf8 = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(StringConversionSink.fromStringSink(_TerminalSink(terminal)));
     terminal.onOutput = (data) => _send(Envelope()..termInput = (TermInput()..sessionId = widget.sessionId..data = utf8.encode(data)));
@@ -65,6 +66,18 @@ class _TerminalPageState extends State<TerminalPage> {
     _reconnects = widget.connection.reconnected.listen((_) {
       if (_subscribed) _subscribe();
     });
+  }
+
+  /// In the background the link stays up but nothing is drawn: stop the stream
+  /// and ask for a fresh screen on return (no handshake needed).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_subscribed) return;
+    if (state == AppLifecycleState.paused) {
+      _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
+    } else if (state == AppLifecycleState.resumed) {
+      _subscribe();
+    }
   }
 
   void _linkChanged() {
@@ -140,6 +153,7 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _resizeTimer?.cancel();
     _sub?.cancel();
     _reconnects?.cancel();
