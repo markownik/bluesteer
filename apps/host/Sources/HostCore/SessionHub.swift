@@ -16,6 +16,7 @@ public final class SessionHub {
     static let backpressureLimit = 16 * 1024
     static let resumeBelow = 4 * 1024
     static let tick: TimeInterval = 0.05
+    static let cwdPollInterval: TimeInterval = 2
 
     private final class Subscription {
         var deflate = DeflateStream()
@@ -27,6 +28,7 @@ public final class SessionHub {
     public private(set) var sessions: [SessionID: TerminalSession] = [:]
     private var subscriptions: [LinkID: [SessionID: Subscription]] = [:]
     private var timer: Timer?
+    private var cwdTimer: Timer?
 
     /// Sends one envelope to a link.
     public var send: ((BSEnvelope, LinkID) -> Void)?
@@ -111,6 +113,25 @@ public final class SessionHub {
     private func startTimer() {
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: Self.tick, repeats: true) { [weak self] _ in self?.flushAll() }
+        cwdTimer = Timer.scheduledTimer(withTimeInterval: Self.cwdPollInterval, repeats: true) { [weak self] _ in self?.pollCwds() }
+    }
+
+    /// Follows `cd` in each session so remotes can show the current directory.
+    private func pollCwds() {
+        for session in sessions.values where session.status != .exited {
+            guard let cwd = Self.currentDirectory(of: session.pid), cwd != session.cwd else { continue }
+            session.cwd = cwd
+            onSessionChanged?(session)
+        }
+    }
+
+    static func currentDirectory(of pid: pid_t) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+        return withUnsafePointer(to: &info.pvi_cdir.vip_path) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+        }
     }
 
     private func flushAll() {

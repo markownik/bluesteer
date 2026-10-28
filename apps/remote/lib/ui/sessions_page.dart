@@ -78,8 +78,7 @@ class _SessionsPageState extends State<SessionsPage> {
       final result = await ack.future.timeout(const Duration(seconds: 10));
       if (!mounted) return;
       if (!result.ok) throw result.error;
-      final state = _sessions[result.sessionId];
-      _open(result.sessionId, state == null ? 'Terminal' : _titleOf(state));
+      _open(result.sessionId, _sessions[result.sessionId]?.cwd ?? '');
     } catch (e) {
       _pendingAcks.remove(cmdId);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start a terminal: $e')));
@@ -88,13 +87,13 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  void _open(String sessionId, String title) {
+  void _open(String sessionId, String cwd) {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => TerminalPage(session: widget.session, sessionId: sessionId, title: title),
+      builder: (_) => TerminalPage(session: widget.session, sessionId: sessionId, hostName: widget.hostName, cwd: cwd),
     ));
   }
 
-  static String _titleOf(SessionState s) => s.title.isNotEmpty ? s.title : s.command.split('/').last;
+  static String _commandOf(SessionState s) => s.title.isNotEmpty ? s.title : s.command.split('/').last;
 
   @override
   Widget build(BuildContext context) {
@@ -108,9 +107,9 @@ class _SessionsPageState extends State<SessionsPage> {
                 for (final s in list)
                   ListTile(
                     leading: const Icon(Icons.terminal),
-                    title: Text(_titleOf(s)),
-                    subtitle: Text(s.source == SessionSource.SESSION_SOURCE_WRAPPED ? '${s.cwd}  ·  your terminal' : s.cwd),
-                    onTap: () => _open(s.sessionId, _titleOf(s)),
+                    title: Text(widget.session.displayPath(s.cwd)),
+                    subtitle: Text(s.source == SessionSource.SESSION_SOURCE_WRAPPED ? '${_commandOf(s)}  ·  your terminal' : _commandOf(s)),
+                    onTap: () => _open(s.sessionId, s.cwd),
                   ),
               ],
             ),

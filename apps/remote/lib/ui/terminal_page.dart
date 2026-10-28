@@ -12,10 +12,12 @@ import '../core/host_session.dart';
 
 /// A live terminal attached to one session on the host (SPEC.md §4).
 class TerminalPage extends StatefulWidget {
-  const TerminalPage({super.key, required this.session, required this.sessionId, required this.title});
+  const TerminalPage({super.key, required this.session, required this.sessionId, required this.hostName, required this.cwd});
   final HostSession session;
   final String sessionId;
-  final String title;
+  final String hostName;
+  /// Working directory when opened; follows SessionState afterwards.
+  final String cwd;
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -29,6 +31,7 @@ class _TerminalPageState extends State<TerminalPage> {
   late final ByteConversionSink _utf8;
   Int64 _lastSeq = Int64.ZERO;
   String _status = 'connecting…';
+  late String _cwd = widget.cwd;
   int _cmdId = 1;
   bool _subscribed = false;
 
@@ -96,9 +99,10 @@ class _TerminalPageState extends State<TerminalPage> {
       }
     } else if (e.hasSessionState() && e.sessionState.sessionId == widget.sessionId) {
       final st = e.sessionState;
-      if (st.status == SessionStatus.SESSION_STATUS_EXITED) {
-        setState(() => _status = 'exited (${st.exitCode})');
-      }
+      setState(() {
+        _cwd = st.cwd;
+        if (st.status == SessionStatus.SESSION_STATUS_EXITED) _status = 'exited (${st.exitCode})';
+      });
     }
   }
 
@@ -112,10 +116,37 @@ class _TerminalPageState extends State<TerminalPage> {
     super.dispose();
   }
 
+  Color get _statusColor {
+    if (_status == 'live') return Colors.green;
+    if (_status.startsWith('connecting')) return Colors.amber;
+    return Colors.red;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.title} · $_status', style: const TextStyle(fontSize: 14))),
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Row(children: [
+          Tooltip(
+            message: _status,
+            child: Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: _statusColor),
+            ),
+          ),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(widget.hostName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+              Text(widget.session.displayPath(_cwd),
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+        ]),
+      ),
       body: Column(children: [
         Expanded(
           child: TerminalView(

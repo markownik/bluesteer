@@ -397,6 +397,9 @@ public nonisolated struct BSHostHello: Sendable {
 
   public var capabilities: [String] = []
 
+  /// lets remotes show paths as ~/...
+  public var homeDir: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1126,7 +1129,7 @@ nonisolated extension BSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
 
 nonisolated extension BSHostHello: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HostHello"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{3}host_name\0\u{3}host_version\0\u{1}capabilities\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{3}host_name\0\u{3}host_version\0\u{1}capabilities\0\u{3}home_dir\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1138,6 +1141,7 @@ nonisolated extension BSHostHello: SwiftProtobuf.Message, SwiftProtobuf._Message
       case 2: try { try decoder.decodeSingularStringField(value: &self.hostName) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.hostVersion) }()
       case 4: try { try decoder.decodeRepeatedStringField(value: &self.capabilities) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.homeDir) }()
       default: break
       }
     }
@@ -1156,6 +1160,9 @@ nonisolated extension BSHostHello: SwiftProtobuf.Message, SwiftProtobuf._Message
     if !self.capabilities.isEmpty {
       try visitor.visitRepeatedStringField(value: self.capabilities, fieldNumber: 4)
     }
+    if !self.homeDir.isEmpty {
+      try visitor.visitSingularStringField(value: self.homeDir, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1164,6 +1171,7 @@ nonisolated extension BSHostHello: SwiftProtobuf.Message, SwiftProtobuf._Message
     if lhs.hostName != rhs.hostName {return false}
     if lhs.hostVersion != rhs.hostVersion {return false}
     if lhs.capabilities != rhs.capabilities {return false}
+    if lhs.homeDir != rhs.homeDir {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

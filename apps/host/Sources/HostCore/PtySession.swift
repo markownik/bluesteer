@@ -7,14 +7,14 @@ import Foundation
 public final class PtySession: EmulatedSession, TerminalSession {
     public let id: SessionID
     public let command: [String]
-    public let cwd: String
+    public var cwd: String
     public private(set) var status: BSSessionStatus = .busy
     public private(set) var exitCode: Int32 = 0
     public var onOutput: ((Data) -> Void)?
     public var onExit: (() -> Void)?
 
     private let master: Int32
-    private let pid: pid_t
+    public let pid: pid_t
     private var reader: DispatchSourceRead?
 
     /// Starts `command` through the user's login shell so PATH matches the terminal.

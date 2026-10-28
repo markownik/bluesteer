@@ -19,6 +19,14 @@ class HostSession {
   Stream<Envelope> get envelopes => _envelopes.stream;
   Uint8List get hostKey => _channel.remoteStaticKey!;
 
+  /// A host path with the home directory shortened to `~`.
+  String displayPath(String path) {
+    final home = hello?.homeDir ?? '';
+    if (home.isEmpty) return path;
+    if (path == home) return '~';
+    return path.startsWith('$home/') ? '~${path.substring(home.length)}' : path;
+  }
+
   /// Runs the handshake. Pass [pairingPsk] from the QR code when pairing,
   /// otherwise [pinnedHostKey] from a previous pairing.
   static Future<HostSession> establish(

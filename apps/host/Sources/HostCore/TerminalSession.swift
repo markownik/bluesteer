@@ -9,6 +9,9 @@ public protocol TerminalSession: AnyObject {
     var status: BSSessionStatus { get }
     var rows: Int { get }
     var cols: Int { get }
+    /// The process whose working directory `cwd` mirrors.
+    var pid: pid_t { get }
+    var cwd: String { get set }
     /// Raw terminal output, as produced.
     var onOutput: ((Data) -> Void)? { get set }
     var onExit: (() -> Void)? { get set }

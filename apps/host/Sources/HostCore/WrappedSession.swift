@@ -7,13 +7,17 @@ import Foundation
 public final class WrappedSession: EmulatedSession, TerminalSession {
     public let id = SessionID()
     public let hello: WrapperHello
+    public var cwd: String
     public private(set) var status: BSSessionStatus = .busy
     public var onOutput: ((Data) -> Void)?
     public var onExit: (() -> Void)?
     private let fd: Int32
 
+    public var pid: pid_t { hello.pid }
+
     init(hello: WrapperHello, fd: Int32) {
         self.hello = hello
+        cwd = hello.cwd
         self.fd = fd
         super.init(rows: hello.rows, cols: hello.cols)
     }
@@ -51,7 +55,7 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
             $0.sessionID = id.rawValue
             $0.source = .wrapped
             $0.command = hello.command.joined(separator: " ")
-            $0.cwd = hello.cwd
+            $0.cwd = cwd
             $0.title = title ?? (hello.command.first as NSString?)?.lastPathComponent ?? ""
             $0.status = status
             $0.rows = UInt32(rows)

@@ -298,6 +298,7 @@ const HostHello$json = {
     {'1': 'host_name', '3': 2, '4': 1, '5': 9, '10': 'hostName'},
     {'1': 'host_version', '3': 3, '4': 1, '5': 9, '10': 'hostVersion'},
     {'1': 'capabilities', '3': 4, '4': 3, '5': 9, '10': 'capabilities'},
+    {'1': 'home_dir', '3': 5, '4': 1, '5': 9, '10': 'homeDir'},
   ],
 };
 
@@ -305,7 +306,8 @@ const HostHello$json = {
 final $typed_data.Uint8List hostHelloDescriptor = $convert.base64Decode(
     'CglIb3N0SGVsbG8SKQoQcHJvdG9jb2xfdmVyc2lvbhgBIAEoDVIPcHJvdG9jb2xWZXJzaW9uEh'
     'sKCWhvc3RfbmFtZRgCIAEoCVIIaG9zdE5hbWUSIQoMaG9zdF92ZXJzaW9uGAMgASgJUgtob3N0'
-    'VmVyc2lvbhIiCgxjYXBhYmlsaXRpZXMYBCADKAlSDGNhcGFiaWxpdGllcw==');
+    'VmVyc2lvbhIiCgxjYXBhYmlsaXRpZXMYBCADKAlSDGNhcGFiaWxpdGllcxIZCghob21lX2Rpch'
+    'gFIAEoCVIHaG9tZURpcg==');
 
 @$core.Deprecated('Use sessionStateDescriptor instead')
 const SessionState$json = {

@@ -66,7 +66,7 @@ Every transport message plaintext is exactly one serialised `bluesteer.v1.Envelo
 
 ### 4.1 Session lifecycle
 
-- After the handshake the host sends `SessionList`. It sends `SessionState` whenever a session changes; an exited session is reported once with status `EXITED` and then dropped from the host's list.
+- After the handshake the host sends `SessionList`. It sends `SessionState` whenever a session changes; an exited session is reported once with status `EXITED` and then dropped from the host's list. `SessionState.cwd` is the current directory of the session's process (the host polls it every 2 s), so it follows `cd`.
 - `NewSession{preset, rows, cols}` starts a session. Version 1 hosts accept only `preset = "shell"` (the user's login shell in their home directory). The `Ack` carries the new `session_id`; the remote then subscribes to it.
 - `Subscribe{session_id, rows, cols}` asks for a session's screen. The host replies with `Ack`, then a `TermSnapshot`, then a stream of `TermOutput`. For host-spawned and attached sessions the PTY is resized to `rows × cols` first; for wrapped sessions the size stays with the user's terminal and the snapshot reports the real size.
 - `TermInput` writes bytes to the session's PTY. The host does not acknowledge individual inputs.
