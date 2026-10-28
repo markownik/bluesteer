@@ -105,5 +105,6 @@ final class Bench: NSObject, CBPeripheralManagerDelegate {
     }
 }
 
+setvbuf(stdout, nil, _IOLBF, 0)
 let bench = Bench()
 RunLoop.main.run()
