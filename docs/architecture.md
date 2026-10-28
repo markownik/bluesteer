@@ -35,4 +35,8 @@ For every session the host polls the process's working directory every 2 s and b
 ## Building
 
 - Host and tools: Swift Package Manager, macOS 14+, Xcode 16+ (`swift build` in `apps/host` and `tools`). `tools/bundle-app.sh` wraps the host executable into a signed `.app`.
-- Remote: Flutter stable (`flutter run` in `apps/remote`).
+- Remote: Flutter stable (`flutter run` in `apps/remote`). On iOS a debug build only runs while `flutter run` is attached; to run it on its own use `flutter build ios --release` and install with `xcrun devicectl device install app`.
+
+## Debugging
+
+The host prints link events and every message it receives (except keystrokes) on stderr. `tools/ios-ui-driver/driver.sh` taps, types and screenshots the remote on a USB-connected iPhone; on Android use `adb` (`input text`, `uiautomator dump`, `screencap`).

@@ -58,7 +58,7 @@ After the handshake, every application message is one Noise transport message, f
 
 The plaintext of a transport message is at most 4096 bytes. A larger `Envelope` is split by the sender into several transport messages of a `Fragment` wrapper (`Envelope` field reserved for v1.1; v1 senders keep envelopes under the limit by chunking `TermOutput` and `TermSnapshot` payloads).
 
-Nonces are the Noise cipher-state counters. A receiver treats a decryption failure as a protocol error and disconnects.
+Nonces are the Noise cipher-state counters, so frames must be encrypted in the order they are sent and decrypted in the order they are received; an implementation with asynchronous crypto has to serialize these operations (decrypting two BLE chunks concurrently reuses a nonce). A receiver treats a decryption failure as a protocol error and disconnects.
 
 ## 4. Messages
 

@@ -32,8 +32,8 @@ On the phone tap **+**, scan the QR code, then tap the Mac: a terminal opens. "N
 - `protocol/` wire protocol spec, protobuf schema, test vectors
 - `apps/host/` macOS host app and `bluesteer` command line tool (Swift)
 - `apps/remote/` remote app (Flutter: iOS, Android, macOS; Windows later)
-- `tools/` development tools: PTY recorder, bandwidth bench, BLE throughput bench
-- `docs/` plan, threat model, user documentation
+- `tools/` development tools: PTY recorder, bandwidth bench, BLE throughput bench, iPhone UI driver
+- `docs/` plan, architecture overview, phase results, threat model
 
 ## License
 
