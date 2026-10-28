@@ -2,10 +2,8 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
-import 'package:universal_ble/universal_ble.dart';
 
-import '../ble/host_link.dart';
-import '../core/host_session.dart';
+import '../core/host_connection.dart';
 import '../core/identity.dart';
 import 'pair_page.dart';
 import 'sessions_page.dart';
@@ -22,7 +20,7 @@ class HostsPage extends StatefulWidget {
 
 class _HostsPageState extends State<HostsPage> {
   final _status = <String, String>{};
-  HostSession? _session;
+  HostConnection? _connection;
   StreamSubscription<Uri>? _links;
 
   @override
@@ -35,7 +33,7 @@ class _HostsPageState extends State<HostsPage> {
   @override
   void dispose() {
     _links?.cancel();
-    _session?.close();
+    _connection?.close();
     super.dispose();
   }
 
@@ -56,45 +54,22 @@ class _HostsPageState extends State<HostsPage> {
   }
 
   Future<void> _connect(PairedHost host) async {
-    await _session?.close();
+    await _connection?.close();
     setState(() => _status[host.id] = 'Looking for ${host.name}…');
-    await UniversalBle.requestPermissions();
-    // Connect to each advertising Mac until one has the right INFO id.
-    final found = Completer<HostLink>();
-    final tried = <String>{};
-    var busy = false;
-    final sub = HostLink.scan().listen((d) async {
-      if (busy || found.isCompleted || !tried.add(d.deviceId)) return;
-      busy = true;
-      try {
-        final link = await HostLink.connect(d);
-        if (link.info.id == host.id && !found.isCompleted) {
-          found.complete(link);
-        } else {
-          await link.close();
-        }
-      } catch (_) {
-      } finally {
-        busy = false;
-      }
-    });
+    final connection = HostConnection(identity: widget.identity, host: host);
+    _connection = connection;
     try {
-      final link = await found.future.timeout(const Duration(seconds: 20));
-      await sub.cancel();
-      await UniversalBle.stopScan();
-      setState(() => _status[host.id] = 'Authenticating…');
-      _session = await HostSession.establish(link, identity: widget.identity, mode: PairingMode.paired, pinnedHostKey: host.hostKey);
-      final rtt = await _session!.ping();
-      setState(() => _status[host.id] = 'Connected · ${_session!.hello?.hostVersion ?? ''} · ping ${rtt.inMilliseconds} ms');
-      _session!.link.connectionState.listen((c) {
-        if (!c && mounted) setState(() => _status[host.id] = 'Disconnected');
-      });
+      await connection.connect();
+      final rtt = await connection.ping();
+      setState(() => _status[host.id] = 'Connected · ${connection.hello?.hostVersion ?? ''} · ping ${rtt.inMilliseconds} ms');
       if (!mounted) return;
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SessionsPage(session: _session!, hostName: host.name)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SessionsPage(connection: connection, hostName: host.name)));
+      if (mounted) setState(() => _status.remove(host.id));
     } catch (e) {
-      await sub.cancel();
-      await UniversalBle.stopScan();
       if (mounted) setState(() => _status[host.id] = 'Failed: $e');
+    } finally {
+      await connection.close();
+      if (_connection == connection) _connection = null;
     }
   }
 

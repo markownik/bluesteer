@@ -169,10 +169,12 @@ public final class SessionHub {
                     $0.seq = sub.seq
                     $0.rows = UInt32(session.rows)
                     $0.cols = UInt32(session.cols)
-                    $0.vt = DeflateStream.compress(session.snapshot())
+                    $0.vt = DeflateStream.compress(session.snapshot(scrollbackLines: sub.scrollbackLines))
                     $0.compressed = true
                 }
             }
+            // Only the first snapshot carries history; later ones keep the remote's own.
+            sub.scrollbackLines = 0
             send?(snapshot, link)
             return
         }

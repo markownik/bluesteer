@@ -19,8 +19,8 @@ public protocol TerminalSession: AnyObject {
     /// May be ignored by sessions whose size belongs to another terminal.
     func resize(rows: Int, cols: Int)
     func stop(signal: Int32)
-    /// Full-screen state for a newly subscribed remote.
-    func snapshot() -> Data
+    /// Full-screen state for a newly subscribed remote, with up to `scrollbackLines` of history first.
+    func snapshot(scrollbackLines: Int) -> Data
 }
 
 /// Shared headless emulator so every session can produce snapshots.
@@ -38,7 +38,7 @@ public class EmulatedSession {
 
     func feed(_ data: Data) { terminal.feed(byteArray: [UInt8](data)) }
 
-    public func snapshot() -> Data { TerminalSnapshot.render(terminal) }
+    public func snapshot(scrollbackLines: Int) -> Data { TerminalSnapshot.render(terminal, scrollbackLines: scrollbackLines) }
 }
 
 final class NullTerminalDelegate: TerminalDelegate {

@@ -8,12 +8,12 @@ import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
 import 'package:xterm/xterm.dart';
 
-import '../core/host_session.dart';
+import '../core/host_connection.dart';
 
 /// A live terminal attached to one session on the host (SPEC.md §4).
 class TerminalPage extends StatefulWidget {
-  const TerminalPage({super.key, required this.session, required this.sessionId, required this.hostName, required this.cwd});
-  final HostSession session;
+  const TerminalPage({super.key, required this.connection, required this.sessionId, required this.hostName, required this.cwd});
+  final HostConnection connection;
   final String sessionId;
   final String hostName;
   /// Working directory when opened; follows SessionState afterwards.
@@ -27,12 +27,14 @@ class _TerminalPageState extends State<TerminalPage> {
   final terminal = Terminal(maxLines: 5000);
   final _controller = TerminalController();
   StreamSubscription<Envelope>? _sub;
+  StreamSubscription<void>? _reconnects;
   ByteConversionSink? _inflater; // per-subscription raw-deflate stream
   late final ByteConversionSink _utf8;
   Int64 _lastSeq = Int64.ZERO;
   String _status = 'connecting…';
   late String _cwd = widget.cwd;
   int _cmdId = 1;
+  int _subscribeCmdId = 0;
   bool _subscribed = false;
   Timer? _resizeTimer;
 
@@ -56,21 +58,39 @@ class _TerminalPageState extends State<TerminalPage> {
         });
       }
     };
-    _sub = widget.session.envelopes.listen(_onEnvelope, onError: (e) => setState(() => _status = 'error: $e'));
+    _sub = widget.connection.envelopes.listen(_onEnvelope, onError: (e) => setState(() => _status = 'error: $e'));
+    widget.connection.state.addListener(_linkChanged);
+    // After a reconnect the host has no subscriptions: ask for a fresh snapshot.
+    _reconnects = widget.connection.reconnected.listen((_) {
+      if (_subscribed) _subscribe();
+    });
+  }
+
+  void _linkChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (widget.connection.state.value == LinkState.reconnecting) {
+        _status = 'reconnecting…';
+      } else if (widget.connection.state.value == LinkState.connected && _status == 'reconnecting…') {
+        _status = 'connecting…';
+      }
+    });
   }
 
   void _subscribe() {
+    _subscribeCmdId = _cmdId++;
     _send(Envelope()
       ..subscribe = (Subscribe()
-        ..cmdId = Int64(_cmdId++)
+        ..cmdId = Int64(_subscribeCmdId)
         ..sessionId = widget.sessionId
         ..rows = terminal.viewHeight
-        ..cols = terminal.viewWidth));
+        ..cols = terminal.viewWidth
+        ..scrollbackLines = 500));
   }
 
   Future<void> _send(Envelope e) async {
     try {
-      await widget.session.send(e);
+      await widget.connection.send(e);
     } catch (err) {
       if (mounted) setState(() => _status = 'send failed: $err');
     }
@@ -102,6 +122,9 @@ class _TerminalPageState extends State<TerminalPage> {
       } else {
         _utf8.add(Uint8List.fromList(out.data));
       }
+    } else if (e.hasAck() && !e.ack.ok && e.ack.cmdId == _subscribeCmdId) {
+      // The session is gone (e.g. the host restarted while we were away).
+      setState(() => _status = 'ended: ${e.ack.error}');
     } else if (e.hasSessionState() && e.sessionState.sessionId == widget.sessionId) {
       final st = e.sessionState;
       setState(() {
@@ -117,6 +140,8 @@ class _TerminalPageState extends State<TerminalPage> {
   void dispose() {
     _resizeTimer?.cancel();
     _sub?.cancel();
+    _reconnects?.cancel();
+    widget.connection.state.removeListener(_linkChanged);
     _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
     _inflater?.close();
     super.dispose();
@@ -124,7 +149,7 @@ class _TerminalPageState extends State<TerminalPage> {
 
   Color get _statusColor {
     if (_status == 'live') return Colors.green;
-    if (_status.startsWith('connecting')) return Colors.amber;
+    if (_status.startsWith('connecting') || _status.startsWith('reconnecting')) return Colors.amber;
     return Colors.red;
   }
 

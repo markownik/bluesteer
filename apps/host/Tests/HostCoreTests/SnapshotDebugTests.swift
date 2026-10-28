@@ -7,7 +7,7 @@ final class SnapshotDebugTests: XCTestCase {
         var raw = Data()
         session.onOutput = { raw.append($0) }
         RunLoop.main.run(until: Date().addingTimeInterval(2.0))
-        let vt = String(decoding: session.snapshot(), as: UTF8.self)
+        let vt = String(decoding: session.snapshot(scrollbackLines: 0), as: UTF8.self)
         let visible = vt.replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
         print("RAW BYTES: \(raw.count)")
         print("RAW HEAD: \(String(decoding: raw.prefix(300), as: UTF8.self).debugDescription)")

@@ -35,7 +35,7 @@ final class SessionHubTests: XCTestCase {
         XCTAssertTrue(text.contains("hello-bluesteer"), text)
         XCTAssertTrue(text.contains("second-line"), text)
         XCTAssertEqual(session.status, .exited)
-        XCTAssertTrue(session.snapshot().count > 0)
+        XCTAssertTrue(session.snapshot(scrollbackLines: 0).count > 0)
     }
 
     private func inflate(_ data: Data) throws -> Data {
