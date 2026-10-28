@@ -38,10 +38,20 @@ class _HostsPageState extends State<HostsPage> {
     super.dispose();
   }
 
+  bool _pairingOpen = false;
+
   Future<void> _pair([String? link]) async {
-    final paired = await Navigator.of(context)
-        .push<bool>(MaterialPageRoute(builder: (_) => PairPage(identity: widget.identity, initialLink: link)));
-    if (paired == true && mounted) setState(() {});
+    // iOS can deliver one launch URL twice; two pairing pages would run two
+    // handshakes over the same BLE link and corrupt each other.
+    if (_pairingOpen) return;
+    _pairingOpen = true;
+    try {
+      final paired = await Navigator.of(context)
+          .push<bool>(MaterialPageRoute(builder: (_) => PairPage(identity: widget.identity, initialLink: link)));
+      if (paired == true && mounted) setState(() {});
+    } finally {
+      _pairingOpen = false;
+    }
   }
 
   Future<void> _connect(PairedHost host) async {

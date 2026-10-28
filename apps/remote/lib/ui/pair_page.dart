@@ -25,6 +25,9 @@ class _PairPageState extends State<PairPage> {
   PairingUri? _pairing;
   String _status = 'Scan the QR code shown by BlueSteer on your Mac';
   final _codeController = TextEditingController();
+  // One camera controller for the page's lifetime: re-creating the scanner
+  // widget after a failed attempt restarts a camera that is still stopping.
+  final _scanner = MobileScannerController(autoStart: false);
   StreamSubscription<BleDevice>? _scan;
   final _tried = <String>{};
   bool _busy = false;
@@ -33,7 +36,11 @@ class _PairPageState extends State<PairPage> {
   void initState() {
     super.initState();
     final link = widget.initialLink;
-    if (link != null) WidgetsBinding.instance.addPostFrameCallback((_) => _onCode(link));
+    if (link != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onCode(link));
+    } else {
+      _scanner.start();
+    }
   }
 
   @override
@@ -41,6 +48,7 @@ class _PairPageState extends State<PairPage> {
     _scan?.cancel();
     UniversalBle.stopScan();
     _codeController.dispose();
+    _scanner.dispose();
     super.dispose();
   }
 
@@ -55,6 +63,7 @@ class _PairPageState extends State<PairPage> {
       _pairing = parsed;
       _status = 'Looking for ${parsed.name} over Bluetooth…';
     });
+    _scanner.stop();
     _findHost();
   }
 
@@ -98,6 +107,7 @@ class _PairPageState extends State<PairPage> {
         _status = 'Pairing failed: $e';
         _pairing = null;
       });
+      _scanner.start();
     }
   }
 
@@ -111,6 +121,7 @@ class _PairPageState extends State<PairPage> {
         if (_pairing == null)
           Expanded(
             child: MobileScanner(
+              controller: _scanner,
               onDetect: (capture) {
                 final value = capture.barcodes.firstOrNull?.rawValue;
                 if (value != null) _onCode(value);

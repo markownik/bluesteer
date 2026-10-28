@@ -91,6 +91,7 @@ public final class HostController {
     // MARK: Links
 
     private func linkOpened(_ id: BLEPeripheralService.LinkID) {
+        log("link \(id) opened, pairing=\(pairingPSK != nil)")
         channels[id] = try? SecureChannel(role: .host(pairedKeys: store.pairedKeys, pairingPSK: pairingPSK),
                                           staticKey: store.hostKey)
     }
@@ -115,6 +116,7 @@ public final class HostController {
                         pairingPSK = nil
                     }
                     let name = store.remotes.first { $0.key == key }?.name ?? "Remote"
+                    log("link \(id) established as \(name)")
                     connected.append(ConnectedRemote(id: id, name: name, key: key))
                     try send(hello(), to: id)
                 case .message(let plaintext):
@@ -123,6 +125,7 @@ public final class HostController {
             }
         } catch {
             // Any protocol error ends the link's session; the central will reconnect and re-handshake.
+            log("link \(id) protocol error: \(error)")
             channels[id] = nil
             connected.removeAll { $0.id == id }
         }
@@ -198,3 +201,5 @@ public final class HostController {
 
 import CryptoKit
 private func SHA256Digest(_ d: Data) -> Data { Data(SHA256.hash(data: d)) }
+/// Unbuffered diagnostics on stderr.
+private func log(_ message: String) { fputs("[host] \(message)\n", stderr) }
