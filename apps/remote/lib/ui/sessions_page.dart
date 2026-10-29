@@ -92,10 +92,11 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  void _open(String sessionId, String cwd) {
-    Navigator.of(context).push(MaterialPageRoute(
+  Future<void> _open(String sessionId, String cwd) async {
+    final wantsNew = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => TerminalPage(connection: widget.connection, sessionId: sessionId, hostName: widget.hostName, cwd: cwd),
     ));
+    if (wantsNew == true && mounted) _newTerminal();
   }
 
   static String _commandOf(SessionState s) => s.title.isNotEmpty ? s.title : s.command.split('/').last;

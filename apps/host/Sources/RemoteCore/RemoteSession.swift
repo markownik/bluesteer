@@ -26,10 +26,15 @@ public final class RemoteSession {
     public enum Error: Swift.Error, LocalizedError {
         case rejected(String)
         case closed
+        /// The Mac speaks another protocol version (SPEC.md §7).
+        case protocolMismatch(UInt32)
         public var errorDescription: String? {
             switch self {
             case .rejected(let why): "the Mac did not accept the pairing: \(why)"
             case .closed: "the link closed"
+            case .protocolMismatch(let v):
+                v > protocolVersion ? "the Mac runs a newer BlueSteer (protocol \(v)); update this tool"
+                                    : "the Mac runs an older BlueSteer (protocol \(v)); update BlueSteer there"
             }
         }
     }
@@ -110,6 +115,7 @@ public final class RemoteSession {
                     let envelope = try BSEnvelope(serializedBytes: plaintext)
                     if hostHello == nil {
                         if case .hostHello(let hello) = envelope.body {
+                            guard hello.protocolVersion == protocolVersion else { throw Error.protocolMismatch(hello.protocolVersion) }
                             hostHello = hello
                             onReady?()
                             continue

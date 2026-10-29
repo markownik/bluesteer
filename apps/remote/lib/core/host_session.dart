@@ -7,6 +7,16 @@ import 'package:flutter/foundation.dart';
 import 'identity.dart';
 import 'link.dart';
 
+/// The Mac speaks another protocol version (SPEC.md §7): this app cannot talk to it.
+class ProtocolMismatchException implements Exception {
+  ProtocolMismatchException(this.hostVersion);
+  final int hostVersion;
+  @override
+  String toString() => hostVersion > protocolVersion
+      ? 'This Mac runs a newer BlueSteer (protocol $hostVersion); update this app.'
+      : 'This Mac runs an older BlueSteer (protocol $hostVersion); update BlueSteer on the Mac.';
+}
+
 /// Handshake selector byte (SPEC.md §2.0).
 enum PairingMode {
   psk(0x01),
@@ -133,6 +143,10 @@ class HostSession {
 
   void _handle(Envelope e) {
     if (e.hasHostHello()) {
+      if (e.hostHello.protocolVersion != protocolVersion) {
+        _fail(ProtocolMismatchException(e.hostHello.protocolVersion), StackTrace.current);
+        return;
+      }
       hello = e.hostHello;
       if (!_hello.isCompleted) _hello.complete(e.hostHello);
     }

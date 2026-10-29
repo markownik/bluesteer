@@ -11,6 +11,7 @@ import 'package:xterm/xterm.dart';
 import '../core/host_connection.dart';
 
 /// A live terminal attached to one session on the host (SPEC.md §4).
+/// Pops with `true` when the user asks for a new terminal after this one ended.
 class TerminalPage extends StatefulWidget {
   const TerminalPage({super.key, required this.connection, required this.sessionId, required this.hostName, required this.cwd});
   final HostConnection connection;
@@ -25,6 +26,11 @@ class TerminalPage extends StatefulWidget {
 
 class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver {
   static const _inputChunk = 4000;
+  /// After a reconnect the host may answer "no such session" for a moment
+  /// while a surviving session re-attaches: ask once more after this long.
+  static const _reattachGrace = Duration(seconds: 5);
+  static const _reattachRetry = Duration(seconds: 2);
+
   final terminal = Terminal(maxLines: 5000);
   final _controller = TerminalController();
   StreamSubscription<Envelope>? _sub;
@@ -38,7 +44,16 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
   int _cmdId = 1;
   int _subscribeCmdId = 0;
   bool _subscribed = false;
+  bool _paused = false;
+  /// A fresh snapshot was requested after a gap; further gaps wait for it.
+  bool _resyncing = false;
+  /// The session is gone for good: no more input.
+  bool _ended = false;
+  bool _applyingSnapshotSize = false;
+  DateTime? _reconnectedAt;
+  bool _retriedAfterReconnect = false;
   Timer? _resizeTimer;
+  Timer? _retryTimer;
 
   @override
   void initState() {
@@ -47,6 +62,7 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
     _utf8 = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(StringConversionSink.fromStringSink(_TerminalSink(terminal)));
     terminal.onOutput = (data) {
+      if (_ended) return;
       // Keep each envelope small (SPEC.md §3): a long paste goes in several pieces.
       final bytes = utf8.encode(data);
       for (var i = 0; i < bytes.length; i += _inputChunk) {
@@ -57,6 +73,7 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
     // The view sets the terminal size once it is laid out; subscribe with that
     // real size rather than the 80x24 default, so the host sizes the PTY to us.
     terminal.onResize = (w, h, _, _) {
+      if (_applyingSnapshotSize) return; // the host's own size is not a request
       if (!_subscribed) {
         _subscribed = true;
         _subscribe();
@@ -68,11 +85,13 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
         });
       }
     };
-    _sub = widget.connection.envelopes.listen(_onEnvelope, onError: (e) => setState(() => _status = 'error: $e'));
+    _sub = widget.connection.envelopes.listen(_onEnvelope, onError: (_) {});
     widget.connection.state.addListener(_linkChanged);
     // After a reconnect the host has no subscriptions: ask for a fresh snapshot.
     _reconnects = widget.connection.reconnected.listen((_) {
-      if (_subscribed) _subscribe();
+      _reconnectedAt = DateTime.now();
+      _retriedAfterReconnect = false;
+      if (_subscribed && !_paused && !_ended) _subscribe();
     });
   }
 
@@ -80,10 +99,12 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
   /// and ask for a fresh screen on return (no handshake needed).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!_subscribed) return;
+    if (!_subscribed || _ended) return;
     if (state == AppLifecycleState.paused) {
+      _paused = true;
       _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
-    } else if (state == AppLifecycleState.resumed) {
+    } else if (state == AppLifecycleState.resumed && _paused) {
+      _paused = false;
       _subscribe();
     }
   }
@@ -101,6 +122,7 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
 
   void _subscribe() {
     _subscribeCmdId = _cmdId++;
+    _resyncing = true;
     _send(Envelope()
       ..subscribe = (Subscribe()
         ..cmdId = Int64(_subscribeCmdId)
@@ -123,36 +145,63 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
       final snap = e.termSnapshot;
       _inflater?.close();
       _inflater = ZLibDecoder(raw: true).startChunkedConversion(_utf8);
-      final vt = snap.compressed ? ZLibDecoder(raw: true).convert(snap.vt) : snap.vt;
-      if (snap.rows != terminal.viewHeight || snap.cols != terminal.viewWidth) {
-        // A session whose size we do not control (e.g. wrapped): follow it.
-        terminal.resize(snap.cols, snap.rows);
+      try {
+        final vt = snap.compressed ? ZLibDecoder(raw: true).convert(snap.vt) : snap.vt;
+        if (snap.rows != terminal.viewHeight || snap.cols != terminal.viewWidth) {
+          // A session whose size we do not control (e.g. wrapped): follow it.
+          _applyingSnapshotSize = true;
+          terminal.resize(snap.cols, snap.rows);
+          _applyingSnapshotSize = false;
+        }
+        _utf8.add(Uint8List.fromList(vt));
+      } catch (_) {
+        _subscribe(); // a damaged snapshot: ask again
+        return;
       }
-      _utf8.add(Uint8List.fromList(vt));
       _lastSeq = snap.seq;
+      _resyncing = false;
       setState(() => _status = 'live');
     } else if (e.hasTermOutput() && e.termOutput.sessionId == widget.sessionId) {
       final out = e.termOutput;
       if (out.seq != _lastSeq + 1) {
-        // Gap in the stream: ask for a fresh snapshot.
-        _subscribe();
+        // Gap in the stream: ask for a fresh snapshot (once per gap).
+        if (!_resyncing) _subscribe();
         return;
       }
       _lastSeq = out.seq;
-      if (out.compressed) {
-        _inflater?.add(out.data);
-      } else {
-        _utf8.add(Uint8List.fromList(out.data));
+      try {
+        if (out.compressed) {
+          _inflater?.add(out.data);
+        } else {
+          _utf8.add(Uint8List.fromList(out.data));
+        }
+      } catch (_) {
+        if (!_resyncing) _subscribe();
       }
     } else if (e.hasAck() && !e.ack.ok && e.ack.cmdId == _subscribeCmdId) {
-      // The session is gone (e.g. the host restarted while we were away).
-      setState(() => _status = 'ended: ${e.ack.error}');
+      final since = _reconnectedAt;
+      if (since != null && !_retriedAfterReconnect && DateTime.now().difference(since) < _reattachGrace) {
+        // The host just came back; its sessions may still be re-attaching.
+        _retriedAfterReconnect = true;
+        _retryTimer = Timer(_reattachRetry, () {
+          if (mounted && !_ended) _subscribe();
+        });
+        return;
+      }
+      // The session is gone (e.g. it exited while we were away).
+      setState(() {
+        _ended = true;
+        _status = 'ended: ${e.ack.error}';
+      });
     } else if (e.hasSessionState() && e.sessionState.sessionId == widget.sessionId) {
       final st = e.sessionState;
       setState(() {
         _cwd = st.cwd;
         _sessionStatus = st.status;
-        if (st.status == SessionStatus.SESSION_STATUS_EXITED) _status = 'exited (${st.exitCode})';
+        if (st.status == SessionStatus.SESSION_STATUS_EXITED) {
+          _ended = true;
+          _status = 'exited (${st.exitCode})';
+        }
       });
     }
   }
@@ -163,11 +212,13 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _resizeTimer?.cancel();
+    _retryTimer?.cancel();
     _sub?.cancel();
     _reconnects?.cancel();
     widget.connection.state.removeListener(_linkChanged);
-    _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
+    if (!_ended) _send(Envelope()..unsubscribe = (Unsubscribe()..cmdId = Int64(_cmdId++)..sessionId = widget.sessionId));
     _inflater?.close();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -216,12 +267,20 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
         ]),
       ),
       body: Column(children: [
+        if (_ended)
+          MaterialBanner(
+            content: Text(_status.startsWith('exited') ? 'This terminal has exited.' : 'This terminal is gone on the Mac.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('New terminal')),
+            ],
+          ),
         Expanded(
           child: TerminalView(
             terminal,
             controller: _controller,
             textStyle: const TerminalStyle(fontSize: 11),
-            autofocus: true,
+            autofocus: !_ended,
+            readOnly: _ended,
             // A plain keyboard: no predictions, autocorrect or auto-capitalisation.
             keyboardType: TextInputType.visiblePassword,
             // iOS soft keyboards send no key event for backspace; xterm detects
@@ -232,16 +291,16 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
         SizedBox(
           height: 44,
           child: ListView(scrollDirection: Axis.horizontal, children: [
-            _KeyButton('Esc', () => _key('\x1b')),
-            _KeyButton('Tab', () => _key('\t')),
-            _KeyButton('⇧Tab', () => _key('\x1b[Z')),
-            _KeyButton('^C', () => _key('\x03')),
-            _KeyButton('^D', () => _key('\x04')),
-            _KeyButton('↑', () => _key('\x1b[A')),
-            _KeyButton('↓', () => _key('\x1b[B')),
-            _KeyButton('←', () => _key('\x1b[D')),
-            _KeyButton('→', () => _key('\x1b[C')),
-            _KeyButton('⏎', () => _key('\r')),
+            _KeyButton('Esc', _ended ? null : () => _key('\x1b')),
+            _KeyButton('Tab', _ended ? null : () => _key('\t')),
+            _KeyButton('⇧Tab', _ended ? null : () => _key('\x1b[Z')),
+            _KeyButton('^C', _ended ? null : () => _key('\x03')),
+            _KeyButton('^D', _ended ? null : () => _key('\x04')),
+            _KeyButton('↑', _ended ? null : () => _key('\x1b[A')),
+            _KeyButton('↓', _ended ? null : () => _key('\x1b[B')),
+            _KeyButton('←', _ended ? null : () => _key('\x1b[D')),
+            _KeyButton('→', _ended ? null : () => _key('\x1b[C')),
+            _KeyButton('⏎', _ended ? null : () => _key('\r')),
           ]),
         ),
       ]),
@@ -252,7 +311,7 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
 class _KeyButton extends StatelessWidget {
   const _KeyButton(this.label, this.onTap);
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),

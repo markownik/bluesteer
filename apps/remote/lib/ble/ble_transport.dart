@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:bluesteer_protocol_dart/bluesteer_protocol_dart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
+import '../core/host_session.dart';
 import '../core/link.dart';
 import 'host_link.dart';
 
@@ -38,6 +40,11 @@ class BleTransport implements Transport {
         final link = await HostLink.connect(d);
         debugPrint('[link] connected to ${link.info.name}');
         if (link.info.id == hostId && !found.isCompleted) {
+          if (link.info.protocolVersion != protocolVersion) {
+            await link.close();
+            found.completeError(ProtocolMismatchException(link.info.protocolVersion));
+            return;
+          }
           found.complete(link);
           return;
         }
