@@ -9,6 +9,7 @@ import '../ble/host_link.dart';
 import '../core/host_session.dart';
 import '../core/identity.dart';
 import '../core/pairing_uri.dart';
+import '../demo/demo.dart';
 import 'pair_code_page.dart';
 
 /// Pairs with a Mac: scan its QR code, or pick it from the nearby list and
@@ -42,6 +43,12 @@ class _PairPageState extends State<PairPage> {
   void initState() {
     super.initState();
     final link = widget.initialLink;
+    if (demoMode) {
+      // The scripted Macs of the demo mode, as a scan would list them.
+      _nearby['demo-macbook'] = BleDevice(deviceId: 'demo-macbook', name: 'BlueSteer MacBook Pro');
+      _nearby['demo-mini'] = BleDevice(deviceId: 'demo-mini', name: 'Mac');
+      return;
+    }
     if (link != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _onCode(link));
     } else {
@@ -53,7 +60,7 @@ class _PairPageState extends State<PairPage> {
   @override
   void dispose() {
     _scan?.cancel();
-    UniversalBle.stopScan();
+    if (!demoMode) UniversalBle.stopScan();
     _scanner.dispose();
     super.dispose();
   }
@@ -162,6 +169,10 @@ class _PairPageState extends State<PairPage> {
     if (_busy) return;
     _busy = true;
     final name = _nameOf(device);
+    if (demoMode) {
+      await _demoPairByCode(device.deviceId, name);
+      return;
+    }
     setState(() => _status = 'Connecting to $name…');
     _scanner.stop();
     await UniversalBle.stopScan();
@@ -194,6 +205,30 @@ class _PairPageState extends State<PairPage> {
         _scanner.start();
         _startScan();
       }
+    }
+  }
+
+  /// Pairing by code against the demo mode's scripted Mac (no Bluetooth).
+  Future<void> _demoPairByCode(String hostId, String name) async {
+    setState(() => _status = 'Connecting securely…');
+    final link = DemoMac(hostId, pairedKeys: const {}, acceptUnknown: true);
+    try {
+      final pending = await HostSession.pairByCode(link, identity: widget.identity);
+      if (!mounted) return;
+      setState(() => _status = '');
+      final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => PairCodePage(pending: pending, hostName: name)),
+      );
+      if (ok == true) {
+        await widget.identity.addHost(PairedHost(id: hostId, name: name, hostKey: pending.session.hostKey));
+        await pending.session.close();
+        if (mounted) Navigator.of(context).pop(true);
+      } else {
+        await link.close();
+      }
+    } finally {
+      _busy = false;
+      if (mounted) setState(() => _status = '');
     }
   }
 
@@ -234,13 +269,16 @@ class _PairPageState extends State<PairPage> {
           child: working
               ? const Center(child: CircularProgressIndicator(semanticsLabel: 'Pairing'))
               : Stack(alignment: Alignment.bottomCenter, children: [
-                  MobileScanner(
-                    controller: _scanner,
-                    onDetect: (capture) {
-                      final value = capture.barcodes.firstOrNull?.rawValue;
-                      if (value != null) _onCode(value);
-                    },
-                  ),
+                  if (demoMode)
+                    const _DemoViewfinder()
+                  else
+                    MobileScanner(
+                      controller: _scanner,
+                      onDetect: (capture) {
+                        final value = capture.barcodes.firstOrNull?.rawValue;
+                        if (value != null) _onCode(value);
+                      },
+                    ),
                   const Padding(
                     padding: EdgeInsets.all(8),
                     child: Text('Scan the QR code from "Pair a remote…" on your Mac', style: TextStyle(shadows: [Shadow(blurRadius: 4)])),
@@ -271,6 +309,27 @@ class _PairPageState extends State<PairPage> {
         TextButton(onPressed: working ? null : _pasteLink, child: const Text('Paste a pairing link')),
         const SizedBox(height: 8),
       ]),
+    );
+  }
+}
+
+/// Stands in for the camera preview in demo mode (simulators have no camera).
+class _DemoViewfinder extends StatelessWidget {
+  const _DemoViewfinder();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF2A3340), Color(0xFF151A22)]),
+      ),
+      child: Center(
+        child: Container(
+          width: 200,
+          height: 200,
+          decoration: BoxDecoration(border: Border.all(color: Colors.white54, width: 2), borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
     );
   }
 }

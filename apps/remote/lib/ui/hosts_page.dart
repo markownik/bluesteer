@@ -7,6 +7,7 @@ import 'package:local_auth/local_auth.dart';
 
 import '../core/host_connection.dart';
 import '../core/identity.dart';
+import '../demo/demo.dart';
 import 'pair_page.dart';
 import 'sessions_page.dart';
 import 'settings_page.dart';
@@ -72,7 +73,7 @@ class _HostsPageState extends State<HostsPage> with WidgetsBindingObserver {
     }
     await _connection?.close();
     setState(() => _status[host.id] = 'Looking for ${host.name}…');
-    final connection = HostConnection(identity: widget.identity, host: host);
+    final connection = HostConnection(identity: widget.identity, host: host, transport: demoMode ? DemoTransport(widget.identity) : null);
     _connection = connection;
     try {
       await connection.connect();

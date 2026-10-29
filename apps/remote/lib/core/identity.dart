@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:bluesteer_protocol_dart/bluesteer_protocol_dart.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Version reported in `RemoteHello`.
@@ -33,8 +32,7 @@ class Identity {
   /// (a stolen phone is a terminal on the Mac otherwise; docs/threat-model.md).
   bool get requireUnlock => _requireUnlock;
 
-  /// An identity that touches no storage (tests).
-  @visibleForTesting
+  /// An identity that touches no storage (tests and the demo mode).
   Identity.inMemory({required NoiseKeyPair keyPair, String deviceName = 'test', List<PairedHost>? hosts})
       : this._(keyPair, const FlutterSecureStorage(), hosts ?? [], deviceName, true);
 

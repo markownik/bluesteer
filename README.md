@@ -79,6 +79,8 @@ The same steps, in the apps' own words, are at https://bluesteer.devland.app/sup
 
 `swift test` in `apps/host` (including a 50-cycle in-process soak) and `packages/BlueSteerProtocol`, `dart test` in `packages/bluesteer_protocol_dart`, `flutter analyze` and `flutter test` in `apps/remote`, `tools/gen-proto.sh --check` for schema drift, `tools/interop-test.sh` for Swift↔Dart handshakes. `tools/soak/README.md` describes the long-run test with real phones and radio drops.
 
+**Demo mode** (`flutter run --dart-define=BLUESTEER_DEMO=true`) runs the remote against a scripted Mac inside the app (`lib/demo/demo.dart`): two paired Macs, three terminals, a Claude Code permission prompt, pairing by code. It needs no host, Bluetooth or camera, so it runs in the iOS simulator; `tools/store-shots.sh` drives it through every screen with `integration_test/screenshots_test.dart` and writes the store screenshots to `docs/store/screenshots/`.
+
 ## Known limits (v1)
 
 - The terminal's text is not exposed to screen readers (the `xterm` widget has no semantics); keys, buttons and status are.
