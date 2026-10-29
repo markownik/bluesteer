@@ -403,5 +403,10 @@ public final class HostController {
 
 import CryptoKit
 private func SHA256Digest(_ d: Data) -> Data { Data(SHA256.hash(data: d)) }
-/// Unbuffered diagnostics on stderr.
-private func log(_ message: String) { fputs("[host] \(message)\n", stderr) }
+/// Unbuffered, timestamped diagnostics on stderr.
+private func log(_ message: String) { fputs("\(logClock.string(from: Date())) [host] \(message)\n", stderr) }
+private let logClock: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()

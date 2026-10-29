@@ -6,6 +6,8 @@ import SwiftUI
 struct BlueSteerHostApp: App {
     @State private var controller: HostController? = {
         do {
+            // A wrapper that went away must not take the host down with it (EPIPE is handled).
+            signal(SIGPIPE, SIG_IGN)
             HookInstaller.refreshCLILink()
             let c = try HostController(store: try PairingStore())
             // Development aid: `BlueSteerHost --pair` starts pairing at launch, prints the QR

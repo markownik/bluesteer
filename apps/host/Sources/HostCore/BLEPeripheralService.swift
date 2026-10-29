@@ -26,8 +26,23 @@ public final class BLEPeripheralService: NSObject {
     private let localName: String
     private var centrals: [LinkID: CBCentral] = [:]
     private var pairingOpen = false
-    private var queues: [LinkID: Data] = [:]
+    private var queues: [LinkID: SendQueue] = [:]
     private let queue = DispatchQueue(label: "dev.bluesteer.ble")
+
+    /// Bytes waiting for a central, consumed from the front without re-copying the rest.
+    private struct SendQueue {
+        var data = Data()
+        var offset = 0
+        var count: Int { data.count - offset }
+        var isEmpty: Bool { offset >= data.count }
+        mutating func append(_ more: Data) { data.append(more) }
+        func peek(_ max: Int) -> Data { data[offset..<min(offset + max, data.count)] }
+        mutating func drop(_ n: Int) {
+            offset += n
+            if isEmpty { data.removeAll(keepingCapacity: true); offset = 0 }
+            else if offset > 1 << 16 { data.removeSubrange(0..<offset); offset = 0 }
+        }
+    }
 
     /// - Parameters:
     ///   - instanceID: 16 bytes identifying this host install.
@@ -45,7 +60,7 @@ public final class BLEPeripheralService: NSObject {
     /// Queues bytes for one link. They are chunked and sent as the central allows.
     public func send(_ data: Data, to link: LinkID) {
         queue.async { [self] in
-            queues[link, default: Data()].append(data)
+            queues[link, default: SendQueue()].append(data)
             pump()
         }
     }
@@ -72,19 +87,31 @@ public final class BLEPeripheralService: NSObject {
         for (id, central) in centrals {
             guard var pending = queues[id], !pending.isEmpty else { continue }
             while !pending.isEmpty {
-                let chunk = pending.prefix(central.maximumUpdateValueLength)
+                let chunk = pending.peek(central.maximumUpdateValueLength)
                 guard manager.updateValue(chunk, for: tx, onSubscribedCentrals: [central]) else { break }
-                pending.removeFirst(chunk.count)
+                pending.drop(chunk.count)
             }
             queues[id] = pending
         }
+    }
+
+    /// Bluetooth went away under the links: every central is gone with it.
+    private func closeAllLinks() {
+        let ids = Array(centrals.keys)
+        centrals.removeAll()
+        queues.removeAll()
+        for id in ids { onLinkClosed?(id) }
     }
 }
 
 extension BLEPeripheralService: CBPeripheralManagerDelegate {
     public func peripheralManagerDidUpdateState(_ p: CBPeripheralManager) {
         onStateChange?(p.state)
-        guard p.state == .poweredOn else { isAdvertising = false; return }
+        guard p.state == .poweredOn else {
+            isAdvertising = false
+            closeAllLinks()
+            return
+        }
         tx = CBMutableCharacteristic(type: Self.txUUID, properties: [.notify], value: nil, permissions: [.readable])
         let rx = CBMutableCharacteristic(type: Self.rxUUID, properties: [.writeWithoutResponse, .write], value: nil, permissions: [.writeable])
         let info = CBMutableCharacteristic(type: Self.infoUUID, properties: [.read], value: infoValue, permissions: [.readable])
@@ -107,7 +134,7 @@ extension BLEPeripheralService: CBPeripheralManagerDelegate {
 
     public func peripheralManager(_ p: CBPeripheralManager, central: CBCentral, didSubscribeTo c: CBCharacteristic) {
         centrals[central.identifier] = central
-        queues[central.identifier] = Data()
+        queues[central.identifier] = SendQueue()
         onLinkOpened?(central.identifier)
     }
 
@@ -123,12 +150,15 @@ extension BLEPeripheralService: CBPeripheralManagerDelegate {
                 // A write can arrive before the central subscribes to TX; treat that as link open.
                 if centrals[r.central.identifier] == nil {
                     centrals[r.central.identifier] = r.central
-                    queues[r.central.identifier] = Data()
+                    queues[r.central.identifier] = SendQueue()
                     onLinkOpened?(r.central.identifier)
                 }
                 onBytes?(r.central.identifier, v)
             }
-            if r.characteristic.properties.contains(.write) { p.respond(to: r, withResult: .success) }
+        }
+        // One response covers the whole batch (CoreBluetooth's contract: answer the first request).
+        if let first = requests.first, first.characteristic.properties.contains(.write) {
+            p.respond(to: first, withResult: .success)
         }
     }
 

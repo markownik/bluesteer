@@ -86,6 +86,7 @@ public final class WrapperSocketServer {
         unlink(path)
         listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard listenFD >= 0 else { throw POSIXError(.EIO) }
+        LocalSocket.harden(listenFD)
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
         _ = path.withCString { strlcpy(&addr.sun_path.0, $0, MemoryLayout.size(ofValue: addr.sun_path)) }
@@ -102,6 +103,7 @@ public final class WrapperSocketServer {
     private func accept() {
         let fd = Darwin.accept(listenFD, nil, nil)
         guard fd >= 0 else { return }
+        LocalSocket.harden(fd)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         connections[fd] = (WrapperFrameParser(), nil, source)
         source.setEventHandler { [weak self] in self?.readable(fd) }

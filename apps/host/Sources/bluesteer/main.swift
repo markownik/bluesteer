@@ -10,6 +10,9 @@ import Foundation
 import HostCore
 import RemoteCore
 
+// The host app going away must never kill the command we wrap (EPIPE is handled instead).
+signal(SIGPIPE, SIG_IGN)
+
 let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
 case "run":
@@ -143,6 +146,7 @@ func runWrapped(_ command: [String]) -> Int32 {
 func connectToHost() -> Int32 {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { return -1 }
+    LocalSocket.harden(fd)
     var addr = sockaddr_un()
     addr.sun_family = sa_family_t(AF_UNIX)
     _ = WrapperSocket.path.withCString { strlcpy(&addr.sun_path.0, $0, MemoryLayout.size(ofValue: addr.sun_path)) }

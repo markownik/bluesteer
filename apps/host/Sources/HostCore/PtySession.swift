@@ -16,6 +16,7 @@ public final class PtySession: EmulatedSession, TerminalSession {
     private let master: Int32
     public let pid: pid_t
     private var reader: DispatchSourceRead?
+    private let writeQueue = DispatchQueue(label: "pty.write")
 
     /// Starts `command` through the user's login shell so PATH matches the terminal.
     public init(id: SessionID = SessionID(), command: [String], cwd: String, rows: Int, cols: Int) throws {
@@ -42,6 +43,8 @@ public final class PtySession: EmulatedSession, TerminalSession {
         }
         for p in cargs { free(p) }
         for p in cenv { free(p) }
+        // Later children must not inherit this master (they would keep the shell alive).
+        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         master = fd
         pid = child
         super.init(rows: rows, cols: cols)
@@ -76,13 +79,17 @@ public final class PtySession: EmulatedSession, TerminalSession {
         source.resume()
     }
 
+    /// Writes on the session's own queue: a program that is not reading its
+    /// input must not block the host.
     public func write(_ data: Data) {
-        data.withUnsafeBytes { ptr in
-            var off = 0
-            while off < data.count {
-                let n = Darwin.write(master, ptr.baseAddress! + off, data.count - off)
-                if n <= 0 { break }
-                off += n
+        writeQueue.async { [master] in
+            data.withUnsafeBytes { ptr in
+                var off = 0
+                while off < data.count {
+                    let n = Darwin.write(master, ptr.baseAddress! + off, data.count - off)
+                    if n <= 0 { break }
+                    off += n
+                }
             }
         }
     }

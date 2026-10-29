@@ -67,3 +67,13 @@ public struct WrapperFrameParser {
 public enum WrapperSocket {
     public static var path: String { HostInfo.supportDirectory.appendingPathComponent("bluesteer.sock").path }
 }
+
+public enum LocalSocket {
+    /// Keeps a socket out of child processes and makes a vanished peer an
+    /// `EPIPE` error instead of a `SIGPIPE`.
+    public static func harden(_ fd: Int32) {
+        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        var on: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+    }
+}

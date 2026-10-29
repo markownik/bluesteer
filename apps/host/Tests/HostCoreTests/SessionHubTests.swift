@@ -44,7 +44,7 @@ final class SessionHubTests: XCTestCase {
         let hub = SessionHub()
         let session = FakeSession(rows: 10, cols: 40)
         hub.add(session)
-        var rng = SystemRandomNumberGenerator()
+        var rng = SeededRNG(seed: 42)
         var text = ""
         for line in 0..<500 {
             for col in 0..<39 {
@@ -64,6 +64,48 @@ final class SessionHubTests: XCTestCase {
         guard case .termSnapshot(let snap)? = received.first?.body else { return XCTFail("expected a snapshot") }
         XCTAssertLessThanOrEqual(snap.vt.count, SessionHub.snapshotLimit)
         XCTAssertTrue(String(decoding: try inflate(snap.vt), as: UTF8.self).contains("last-line-marker"))
+    }
+
+    /// One tick hands out at most the backpressure budget; once the link is that
+    /// far behind, the backlog is dropped and a snapshot follows when it drains.
+    func testFlushRespectsTheBackpressureBudgetWithinOneTick() throws {
+        let hub = SessionHub()
+        let session = FakeSession(rows: 10, cols: 80)
+        hub.add(session)
+        var received: [BSEnvelope] = []
+        var queued = 0 // bytes the fake link has accepted but not sent
+        hub.send = { env, _ in
+            received.append(env)
+            if case .termOutput(let o) = env.body { queued += o.data.count }
+        }
+        hub.pendingBytes = { _ in queued }
+        hub.subscribe(link: UUID(), session: session.id, rows: 10, cols: 80)
+        received.removeAll()
+
+        var rng = SeededRNG(seed: 42)
+        let letters = Array("abcdefghijklmnopqrstuvwxyz0123456789 ")
+        let noise = String((0..<200_000).map { _ in letters.randomElement(using: &rng)! })
+        session.emit(Data(noise.utf8))
+
+        hub.flushAll()
+        XCTAssertGreaterThanOrEqual(queued, SessionHub.backpressureLimit - SessionHub.pieceSize)
+        XCTAssertLessThan(queued, SessionHub.backpressureLimit + SessionHub.pieceSize, "at most one piece past the budget")
+        XCTAssertFalse(received.contains { if case .termSnapshot = $0.body { return true } else { return false } })
+
+        hub.flushAll() // the link has not drained: the backlog goes, a snapshot is owed
+        XCTAssertEqual(received.filter { if case .termOutput = $0.body { return true } else { return false } }.count,
+                       received.count, "nothing new while the link is behind")
+        queued = 0 // the link caught up
+        hub.flushAll()
+        guard case .termSnapshot? = received.last?.body else { return XCTFail("expected a snapshot once the link drained") }
+    }
+
+    /// The placeholder cell after a wide character is not rendered as a space.
+    func testSnapshotSkipsWideCharacterTails() throws {
+        let session = FakeSession(rows: 3, cols: 20)
+        session.emit(Data("日本語 end".utf8))
+        let text = String(decoding: session.snapshot(scrollbackLines: 0), as: UTF8.self)
+        XCTAssertTrue(text.contains("日本語 end"), text)
     }
 
     private func inflate(_ data: Data) throws -> Data {
@@ -91,6 +133,19 @@ final class SessionHubTests: XCTestCase {
 }
 
 import zlib
+
+/// Deterministic pseudo-random bytes for reproducible test data (SplitMix64).
+struct SeededRNG: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
+    }
+}
 
 /// An in-memory session: output is whatever the test feeds it.
 final class FakeSession: EmulatedSession, TerminalSession {

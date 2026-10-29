@@ -17,6 +17,8 @@ public final class SessionHub {
     static let resumeBelow = 4 * 1024
     /// Largest compressed snapshot payload (SPEC.md §3); history is cut until it fits.
     static let snapshotLimit = 32 * 1024
+    /// Plaintext per `TermOutput` (SPEC.md §3 keeps envelopes under 4 KiB).
+    static let pieceSize = 3000
     static let tick: TimeInterval = 0.05
     static let cwdPollInterval: TimeInterval = 2
 
@@ -142,8 +144,13 @@ public final class SessionHub {
 
     private func startTimer() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: Self.tick, repeats: true) { [weak self] _ in self?.flushAll() }
-        cwdTimer = Timer.scheduledTimer(withTimeInterval: Self.cwdPollInterval, repeats: true) { [weak self] _ in self?.pollCwds() }
+        // `.common` keeps output flowing while the menu-bar menu is open (event tracking).
+        let flush = Timer(timeInterval: Self.tick, repeats: true) { [weak self] _ in self?.flushAll() }
+        let cwd = Timer(timeInterval: Self.cwdPollInterval, repeats: true) { [weak self] _ in self?.pollCwds() }
+        RunLoop.main.add(flush, forMode: .common)
+        RunLoop.main.add(cwd, forMode: .common)
+        timer = flush
+        cwdTimer = cwd
     }
 
     /// Follows `cd` in each session so remotes can show the current directory.
@@ -164,7 +171,8 @@ public final class SessionHub {
         }
     }
 
-    private func flushAll() {
+    /// One tick: every subscription gets its snapshot or pending output.
+    func flushAll() {
         for (link, subs) in subscriptions {
             for (id, _) in subs {
                 if let session = sessions[id] { flush(link: link, session: session) }
@@ -175,7 +183,7 @@ public final class SessionHub {
     private func flush(link: LinkID, session: TerminalSession) {
         guard let sub = subscriptions[link]?[session.id] else { return }
         let queued = pendingBytes?(link) ?? 0
-        if queued > Self.backpressureLimit {
+        if queued >= Self.backpressureLimit {
             // The link cannot keep up: drop what we buffered and start over from a snapshot.
             sub.pending.removeAll()
             sub.needsSnapshot = true
@@ -207,15 +215,20 @@ public final class SessionHub {
             send?(snapshot, link)
             return
         }
-        while !sub.pending.isEmpty {
-            let piece = sub.pending.prefix(3000)
+        // Hand out at most the backpressure budget per tick; what is left waits
+        // for the next tick (or is replaced by a snapshot once the link is behind).
+        var handedOut = 0
+        while !sub.pending.isEmpty, queued + handedOut < Self.backpressureLimit {
+            let piece = sub.pending.prefix(Self.pieceSize)
             sub.pending.removeFirst(piece.count)
             sub.seq += 1
+            let compressed = sub.deflate.push(piece)
+            handedOut += compressed.count
             let out = BSEnvelope.with {
                 $0.termOutput = BSTermOutput.with {
                     $0.sessionID = session.id.rawValue
                     $0.seq = sub.seq
-                    $0.data = sub.deflate.push(piece)
+                    $0.data = compressed
                     $0.compressed = true
                 }
             }

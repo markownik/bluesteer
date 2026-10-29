@@ -10,12 +10,24 @@ public final class TerminalAttach {
 
     public enum Outcome { case detached, sessionExited(Int32), linkLost, error(Swift.Error) }
 
+    public enum Error: Swift.Error, LocalizedError {
+        /// The host no longer has the session we were attached to.
+        case sessionGone(String)
+        public var errorDescription: String? {
+            switch self {
+            case .sessionGone(let why): "the session is gone (\(why)); `bluesteer connect --new` starts a fresh shell"
+            }
+        }
+    }
+
     private let session: RemoteSession
     private let sessionID: String
     private let queue: DispatchQueue
     private var inflater = InflateStream()
     private var lastSeq: UInt64 = 0
     private var subscribeCmd: UInt64 = 0
+    /// A fresh snapshot was requested after a gap; further gaps wait for it.
+    private var resyncing = false
     private var finished: ((Outcome) -> Void)?
     private var winch: DispatchSourceSignal?
     private var stdinSource: DispatchSourceRead?
@@ -92,14 +104,18 @@ public final class TerminalAttach {
             vt = Data(String(decoding: vt, as: UTF8.self).replacingOccurrences(of: "\u{1b}[3J", with: "").utf8)
             RawTerminal.writeAll(STDOUT_FILENO, vt)
             lastSeq = snap.seq
+            resyncing = false
         case .termOutput(let out) where out.sessionID == sessionID:
-            guard out.seq == lastSeq + 1 else { subscribe(); return }
+            guard out.seq == lastSeq + 1 else {
+                if !resyncing { resyncing = true; subscribe() }
+                return
+            }
             lastSeq = out.seq
             RawTerminal.writeAll(STDOUT_FILENO, out.compressed ? inflater.push(out.data) : out.data)
         case .sessionState(let st) where st.sessionID == sessionID && st.status == .exited:
             finish(.sessionExited(st.exitCode))
         case .ack(let ack) where ack.cmdID == subscribeCmd && !ack.ok:
-            finish(.error(RemoteSession.Error.rejected(ack.error)))
+            finish(.error(Error.sessionGone(ack.error)))
         default:
             break
         }

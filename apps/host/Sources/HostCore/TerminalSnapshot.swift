@@ -53,6 +53,8 @@ enum TerminalSnapshot {
         }
         for col in 0..<(last + 1) {
             let cd = line[col]
+            // The cell after a wide character is a placeholder the wide glyph already covers.
+            if col > 0, cd.getCharacter() == "\0", line[col - 1].width == 2 { continue }
             if cd.attribute != lastAttr {
                 s += sgr(cd.attribute)
                 lastAttr = cd.attribute
