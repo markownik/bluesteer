@@ -14,7 +14,7 @@ udid=${UDID:?set UDID to the iPhone device identifier}
 port=8099
 url="http://127.0.0.1:$port"
 
-encode() { printf '%s' "$1" | od -An -tx1 -v | tr -d '\n' | sed 's/ /%/g'; }
+encode() { printf '%s' "$1" | xxd -p | tr -d '\n' | sed 's/../%&/g'; }
 
 case "$1" in
   build)

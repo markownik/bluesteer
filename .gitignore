@@ -67,3 +67,6 @@ build/
 # BlueSteer recordings and bench output
 *.rec
 tools/soak/runs/
+
+# Claude Code local settings
+.claude/

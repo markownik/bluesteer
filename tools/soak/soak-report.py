@@ -102,7 +102,9 @@ all_recovered = True
 for t, k, _ in events:
     if k not in ("phone-on", "mac-on"):
         continue
-    affected = names if k == "mac-on" else [n for n in names if "iPhone" not in n]
+    # Only phones that were attached before this drop count (the iPhone may join late).
+    attached = [n for n in names if any(f"established as {n}" in l and (host_time(l) or 0) < t for l in host_log)]
+    affected = attached if k == "mac-on" else [n for n in attached if "iPhone" not in n]
     for name in affected:
         est = next((host_time(l) for l in host_log if f"established as {name}" in l and (host_time(l) or 0) > t), None)
         link = None
