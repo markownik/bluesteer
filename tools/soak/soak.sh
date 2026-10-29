@@ -66,24 +66,30 @@ shot t0
 
 START=$(now)
 TOTAL=$((MINUTES * 60 + 120))
-PHONE_OFF=-1; MAC_OFF=-1
+ACTIVE=$((MINUTES * 60))
+# Everything is "due at or after" a time, so a loop iteration that takes more
+# than a second (a screenshot, a sample) never skips an event.
+NEXT_SAMPLE=0; NEXT_SHOT=600; NEXT_PHONE=300; NEXT_MAC=1200
+PHONE_ON_AT=-1; PHONE_SHOT_AT=-1; MAC_ON_AT=-1; MAC_SHOT_AT=-1
 while :; do
   el=$(( $(now) - START ))
   [ "$el" -ge "$TOTAL" ] && break
-  [ $((el % 60)) -eq 0 ] && sample
-  # Phone radio: off at minute 5, 15, 25, …; back on 20 s later.
-  if [ $((el % 600)) -eq 300 ] && [ "$el" -lt $((MINUTES * 60)) ]; then
-    A shell svc bluetooth disable; event phone-off; PHONE_OFF=$el
+  if [ "$el" -ge "$NEXT_SAMPLE" ]; then sample; NEXT_SAMPLE=$((NEXT_SAMPLE + 60)); fi
+  # Phone radio: off at minute 5, 15, 25, …; back on 20 s later; screenshot 30 s after that.
+  if [ "$el" -ge "$NEXT_PHONE" ] && [ "$NEXT_PHONE" -lt "$ACTIVE" ]; then
+    A shell svc bluetooth disable; event phone-off
+    PHONE_ON_AT=$((el + 20)); PHONE_SHOT_AT=$((el + 50)); NEXT_PHONE=$((NEXT_PHONE + 600))
   fi
-  if [ "$PHONE_OFF" -ge 0 ] && [ "$el" -eq $((PHONE_OFF + 20)) ]; then A shell svc bluetooth enable; event phone-on; fi
-  if [ "$PHONE_OFF" -ge 0 ] && [ "$el" -eq $((PHONE_OFF + 50)) ]; then shot "after-phone-$((PHONE_OFF / 60))m"; PHONE_OFF=-1; fi
-  # Mac radio: off at minute 20, 50, 80, 110; back on 15 s later.
-  if [ "$DROPS" = "phone+mac" ] && [ $((el % 1800)) -eq 1200 ] && [ "$el" -lt $((MINUTES * 60)) ]; then
-    blueutil -p 0; event mac-off; MAC_OFF=$el
+  if [ "$PHONE_ON_AT" -ge 0 ] && [ "$el" -ge "$PHONE_ON_AT" ]; then A shell svc bluetooth enable; event phone-on; PHONE_ON_AT=-1; fi
+  if [ "$PHONE_SHOT_AT" -ge 0 ] && [ "$el" -ge "$PHONE_SHOT_AT" ]; then shot "after-phone-$((el / 60))m"; PHONE_SHOT_AT=-1; fi
+  # Mac radio: off at minute 20, 50, 80, 110; back on 15 s later; screenshot 30 s after that.
+  if [ "$DROPS" = "phone+mac" ] && [ "$el" -ge "$NEXT_MAC" ] && [ "$NEXT_MAC" -lt "$ACTIVE" ]; then
+    blueutil -p 0; event mac-off
+    MAC_ON_AT=$((el + 15)); MAC_SHOT_AT=$((el + 45)); NEXT_MAC=$((NEXT_MAC + 1800))
   fi
-  if [ "$MAC_OFF" -ge 0 ] && [ "$el" -eq $((MAC_OFF + 15)) ]; then blueutil -p 1; event mac-on; fi
-  if [ "$MAC_OFF" -ge 0 ] && [ "$el" -eq $((MAC_OFF + 45)) ]; then shot "after-mac-$((MAC_OFF / 60))m"; MAC_OFF=-1; fi
-  [ $((el % 600)) -eq 0 ] && [ "$el" -gt 0 ] && shot "t$((el / 60))m"
+  if [ "$MAC_ON_AT" -ge 0 ] && [ "$el" -ge "$MAC_ON_AT" ]; then blueutil -p 1; event mac-on; MAC_ON_AT=-1; fi
+  if [ "$MAC_SHOT_AT" -ge 0 ] && [ "$el" -ge "$MAC_SHOT_AT" ]; then shot "after-mac-$((el / 60))m"; MAC_SHOT_AT=-1; fi
+  if [ "$el" -ge "$NEXT_SHOT" ]; then shot "t$((NEXT_SHOT / 60))m"; NEXT_SHOT=$((NEXT_SHOT + 600)); fi
   sleep 1
 done
 shot final
