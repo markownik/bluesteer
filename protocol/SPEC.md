@@ -80,7 +80,7 @@ After the handshake, every application message is one Noise transport message, f
 [u16 big-endian length][Noise ciphertext of that length]
 ```
 
-The plaintext of a transport message is at most 4096 bytes. A larger `Envelope` is split by the sender into several transport messages of a `Fragment` wrapper (`Envelope` field reserved for v1.1; v1 senders keep envelopes under the limit by chunking `TermOutput` and `TermSnapshot` payloads).
+A frame carries at most 65535 bytes of ciphertext (Noise's limit), so a plaintext is at most 65519 bytes. Senders check this **before** encrypting: a nonce spent on a frame that is never sent would make the peer fail to decrypt everything after it. Envelopes stay small in practice: `TermOutput` pieces and `TermInput` carry at most 4 KiB of payload; `TermSnapshot` is the exception, and the host caps its compressed payload at 32 KiB by reducing the history lines it includes. A `Fragment` wrapper for larger messages remains reserved for v1.1.
 
 Nonces are the Noise cipher-state counters, so frames must be encrypted in the order they are sent and decrypted in the order they are received; an implementation with asynchronous crypto has to serialize these operations (decrypting two BLE chunks concurrently reuses a nonce). A receiver treats a decryption failure as a protocol error and disconnects.
 

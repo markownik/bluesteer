@@ -56,6 +56,20 @@ void main() {
     expect(host2.isEstablished && remote2.isEstablished, isTrue);
   });
 
+  test('oversized message leaves the nonce unchanged', () async {
+    final hostKey = await NoiseKeyPair.generate();
+    final remoteKey = await NoiseKeyPair.generate();
+    final host = await SecureChannel.host(staticKey: hostKey, pairedKeys: {SecureChannel.keyId(remoteKey.publicKey)});
+    final remote = await SecureChannel.remote(staticKey: remoteKey, pinnedHostKey: hostKey.publicKey);
+    await connect(remote, host);
+
+    await expectLater(remote.encrypt(Uint8List(maxPlaintextLength + 1)), throwsA(isA<SecureChannelException>()));
+    final largest = Uint8List(maxPlaintextLength)..fillRange(0, maxPlaintextLength, 7);
+    expect(((await deliver(await remote.encrypt(largest), host, 512)).single as MessageEvent).plaintext, largest);
+    expect(((await deliver(await remote.encrypt(utf8.encode('after')), host, 3)).single as MessageEvent).plaintext,
+        utf8.encode('after'));
+  });
+
   test('unknown remote is rejected', () async {
     final host = await SecureChannel.host(
         staticKey: await NoiseKeyPair.generate(), pairedKeys: {SecureChannel.keyId((await NoiseKeyPair.generate()).publicKey)});

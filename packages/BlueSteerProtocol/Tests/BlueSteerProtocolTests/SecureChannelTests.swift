@@ -75,6 +75,22 @@ final class SecureChannelTests: XCTestCase {
         XCTAssertThrowsError(try connect(remote, host))
     }
 
+    func testOversizedMessageLeavesTheNonceUnchanged() throws {
+        let hostKey = NoiseKeyPair(), remoteKey = NoiseKeyPair()
+        let host = try SecureChannel(role: .host(pairedKeys: [remoteKey.publicKey], pairingPSK: nil), staticKey: hostKey)
+        let remote = try SecureChannel(role: .remote(pinnedHostKey: hostKey.publicKey, pairingPSK: nil), staticKey: remoteKey)
+        _ = try connect(remote, host)
+
+        let tooBig = Data(count: SecureChannel.maxPlaintextLength + 1)
+        XCTAssertThrowsError(try remote.encrypt(tooBig)) {
+            XCTAssertEqual($0 as? SecureChannel.Error, .messageTooLarge(tooBig.count))
+        }
+        // The largest allowed message and a small one after it still decrypt in order.
+        let largest = Data(repeating: 7, count: SecureChannel.maxPlaintextLength)
+        XCTAssertEqual(try deliver(try remote.encrypt(largest), to: host, chunk: 512), [.message(largest)])
+        XCTAssertEqual(try deliver(try remote.encrypt(Data("after".utf8)), to: host, chunk: 3), [.message(Data("after".utf8))])
+    }
+
     func testEncryptBeforeEstablishedFails() throws {
         let remote = try SecureChannel(role: .remote(pinnedHostKey: nil, pairingPSK: nil), staticKey: NoiseKeyPair())
         XCTAssertThrowsError(try remote.encrypt(Data())) { XCTAssertEqual($0 as? SecureChannel.Error, .notEstablished) }

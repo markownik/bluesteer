@@ -24,6 +24,7 @@ class TerminalPage extends StatefulWidget {
 }
 
 class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver {
+  static const _inputChunk = 4000;
   final terminal = Terminal(maxLines: 5000);
   final _controller = TerminalController();
   StreamSubscription<Envelope>? _sub;
@@ -45,7 +46,14 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _utf8 = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(StringConversionSink.fromStringSink(_TerminalSink(terminal)));
-    terminal.onOutput = (data) => _send(Envelope()..termInput = (TermInput()..sessionId = widget.sessionId..data = utf8.encode(data)));
+    terminal.onOutput = (data) {
+      // Keep each envelope small (SPEC.md §3): a long paste goes in several pieces.
+      final bytes = utf8.encode(data);
+      for (var i = 0; i < bytes.length; i += _inputChunk) {
+        final end = i + _inputChunk < bytes.length ? i + _inputChunk : bytes.length;
+        _send(Envelope()..termInput = (TermInput()..sessionId = widget.sessionId..data = bytes.sublist(i, end)));
+      }
+    };
     // The view sets the terminal size once it is laid out; subscribe with that
     // real size rather than the 80x24 default, so the host sizes the PTY to us.
     terminal.onResize = (w, h, _, _) {

@@ -72,9 +72,16 @@ public final class TerminalAttach {
         send(Data(bytes))
     }
 
+    /// Keystrokes and pastes, in envelopes small enough for one frame (SPEC.md §3).
     private func send(_ input: Data) {
-        try? session.send(BSEnvelope.with { $0.termInput = BSTermInput.with { $0.sessionID = self.sessionID; $0.data = input } })
+        var offset = input.startIndex
+        while offset < input.endIndex {
+            let piece = input[offset..<min(offset + Self.inputChunk, input.endIndex)]
+            try? session.send(BSEnvelope.with { $0.termInput = BSTermInput.with { $0.sessionID = self.sessionID; $0.data = Data(piece) } })
+            offset += piece.count
+        }
     }
+    private static let inputChunk = 4000
 
     private func handle(_ e: BSEnvelope) {
         switch e.body {

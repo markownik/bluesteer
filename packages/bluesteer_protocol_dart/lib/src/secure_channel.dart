@@ -97,6 +97,9 @@ class SecureChannel {
   Future<Uint8List> encrypt(List<int> plaintext) => _ordered(() async {
     final tx = _send;
     if (tx == null) throw SecureChannelException('not established');
+    // Checked before encrypting: a nonce spent on a frame that is never sent
+    // would make the peer fail to decrypt everything that follows.
+    if (plaintext.length > maxPlaintextLength) throw SecureChannelException('message too large (${plaintext.length} bytes)');
     return frame(await tx.encrypt(plaintext));
   });
 

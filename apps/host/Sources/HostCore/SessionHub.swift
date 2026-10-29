@@ -15,6 +15,8 @@ public final class SessionHub {
     /// Un-sent bytes per link above which pending output is replaced by a snapshot (SPEC.md §5).
     static let backpressureLimit = 16 * 1024
     static let resumeBelow = 4 * 1024
+    /// Largest compressed snapshot payload (SPEC.md §3); history is cut until it fits.
+    static let snapshotLimit = 32 * 1024
     static let tick: TimeInterval = 0.05
     static let cwdPollInterval: TimeInterval = 2
 
@@ -184,13 +186,19 @@ public final class SessionHub {
             sub.needsSnapshot = false
             sub.deflate = DeflateStream()
             sub.seq += 1
+            var history = sub.scrollbackLines
+            var vt = DeflateStream.compress(session.snapshot(scrollbackLines: history))
+            while vt.count > Self.snapshotLimit && history > 0 {
+                history /= 2
+                vt = DeflateStream.compress(session.snapshot(scrollbackLines: history))
+            }
             let snapshot = BSEnvelope.with {
                 $0.termSnapshot = BSTermSnapshot.with {
                     $0.sessionID = session.id.rawValue
                     $0.seq = sub.seq
                     $0.rows = UInt32(session.rows)
                     $0.cols = UInt32(session.cols)
-                    $0.vt = DeflateStream.compress(session.snapshot(scrollbackLines: sub.scrollbackLines))
+                    $0.vt = vt
                     $0.compressed = true
                 }
             }

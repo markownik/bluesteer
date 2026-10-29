@@ -3,6 +3,9 @@ import 'dart:typed_data';
 /// Largest ciphertext a single frame may carry (Noise's 65535 limit).
 const int maxFrameLength = 65535;
 
+/// Largest plaintext one transport message can carry: the frame limit minus the AEAD tag.
+const int maxPlaintextLength = maxFrameLength - 16;
+
 /// Prefixes [message] with its 16-bit big-endian length (SPEC.md §3).
 Uint8List frame(List<int> message) {
   if (message.length > maxFrameLength) {

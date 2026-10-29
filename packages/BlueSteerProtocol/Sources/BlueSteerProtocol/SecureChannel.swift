@@ -33,7 +33,12 @@ public final class SecureChannel {
         case hostKeyMismatch
         case notEstablished
         case protocolViolation
+        /// The plaintext would not fit one frame (SPEC.md §3); nothing was encrypted.
+        case messageTooLarge(Int)
     }
+
+    /// Largest plaintext one transport message can carry: the frame limit minus the AEAD tag.
+    public static let maxPlaintextLength = Framing.maxFrameLength - 16
 
     public let role: Role
     private var handshake: NoiseHandshake?
@@ -104,6 +109,9 @@ public final class SecureChannel {
     /// Encrypts and frames one application message.
     public func encrypt(_ plaintext: Data) throws -> Data {
         guard var tx = send else { throw Error.notEstablished }
+        // Checked before encrypting: a nonce spent on a frame that is never sent
+        // would make the peer fail to decrypt everything that follows.
+        guard plaintext.count <= Self.maxPlaintextLength else { throw Error.messageTooLarge(plaintext.count) }
         let c = try tx.encrypt(plaintext: plaintext)
         send = tx
         return try Framing.frame(c)

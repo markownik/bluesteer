@@ -67,7 +67,9 @@ public final class HostController {
         ble.onLinkOpened = { [weak self] id in DispatchQueue.main.async { self?.linkOpened(id) } }
         ble.onLinkClosed = { [weak self] id in DispatchQueue.main.async { self?.linkClosed(id) } }
         ble.onBytes = { [weak self] id, bytes in DispatchQueue.main.async { self?.received(bytes, on: id) } }
-        hub.send = { [weak self] envelope, link in try? self?.send(envelope, to: link) }
+        hub.send = { [weak self] envelope, link in
+            do { try self?.send(envelope, to: link) } catch { log("link \(link) send failed: \(error)") }
+        }
         hub.pendingBytes = { [weak self] link in self?.ble.pendingBytes(for: link) ?? 0 }
         hub.onSessionChanged = { [weak self] session in
             guard let self else { return }
