@@ -55,10 +55,13 @@ struct BlueSteerHostApp: App {
 
 extension BlueSteerHostApp {
     /// The brand glyph (assets/icon/menubar.svg) as a template image, so it follows the menu bar's appearance.
+    /// Inside BlueSteer.app the PNGs sit in Contents/Resources (tools/bundle-app.sh); a bare `swift build`
+    /// binary reads them from the SwiftPM resource bundle, whose accessor only knows the build directory.
     static let menuBarIcon: NSImage = {
         let image = NSImage()
+        let resources: Bundle = Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main : Bundle.module
         for name in ["MenuBarIcon", "MenuBarIcon@2x"] {
-            if let url = Bundle.module.url(forResource: name, withExtension: "png"), let data = try? Data(contentsOf: url),
+            if let url = resources.url(forResource: name, withExtension: "png"), let data = try? Data(contentsOf: url),
                let rep = NSBitmapImageRep(data: data) {
                 rep.size = NSSize(width: 18, height: 18)
                 image.addRepresentation(rep)

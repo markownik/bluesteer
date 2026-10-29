@@ -20,8 +20,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINDIR/BlueSteerHost" "$APP/Contents/MacOS/BlueSteerHost"
 # The command line tool ships next to the app binary; the host symlinks it for the hooks.
 cp "$BINDIR/bluesteer" "$APP/Contents/MacOS/bluesteer"
-# SwiftPM resource bundle (menu-bar icon) and the app icon.
-cp -R "$BINDIR"/BlueSteerHostApp_BlueSteerHost.bundle "$APP/Contents/Resources/" 2>/dev/null || true
+# Menu-bar icon PNGs straight into Resources (the SwiftPM resource bundle's accessor
+# cannot find a bundle inside an .app; the app reads them from Bundle.main) and the app icon.
+cp "$BINDIR"/BlueSteerHostApp_BlueSteerHost.bundle/MenuBarIcon*.png "$APP/Contents/Resources/"
 cp ../../assets/icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
