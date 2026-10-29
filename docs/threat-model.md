@@ -14,9 +14,10 @@ BlueSteer gives a paired remote device a real terminal on the host Mac. The secu
 |---|---|---|
 | Nearby attacker during pairing | Connects before the real remote and tries to pair | First handshake requires the PSK from the QR code (`Noise_XXpsk3`); host shows a confirmation; PSK is single-use |
 | Nearby eavesdropper / active MITM | Reads or alters BLE traffic | Noise XX with pinned static keys, ChaCha20-Poly1305, per-direction nonce counters; decryption failure disconnects |
-| Attacker with a stolen remote | Uses the paired phone | Optional biometric gate before connecting; host-side revoke list; "disconnect all" in the menu bar |
-| Attacker with a stolen host key | Impersonates the host to the remote | Keys live in Keychain; revoking and re-pairing replaces them |
-| Local attacker on the Mac (other user) | Talks to the wrapper/hook socket | Socket in `~/Library/Application Support/BlueSteer/` with 0600 permissions and a per-install token; no network listeners |
+| Attacker with a stolen remote | Uses the paired phone | Host-side revoke list (menu → Paired remotes). A biometric gate before connecting and "disconnect all" are planned for Phase 5; v1 has neither |
+| Attacker with a stolen host key | Impersonates the host to the remote | `pairing.json` is 0600 in the user's support directory (moving the key into the Keychain is a Phase 5 item); revoking and re-pairing replaces keys |
+| Local attacker on the Mac (other user) | Talks to the wrapper/hook socket | Socket in `~/Library/Application Support/BlueSteer/` with 0600 permissions; no network listeners. A per-install token is planned for Phase 5 |
+| Anyone at the Mac after the host app quits | Session helpers keep shells running | By design (sessions survive a host restart); they run as the user, like any terminal left open. `exit` ends them |
 | Supply chain | Tampered builds | Signed, notarized builds reproducible from the public repo; pinned dependencies |
 
 ## Out of scope

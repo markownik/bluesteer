@@ -21,20 +21,20 @@ login shell in a PTY ──► headless SwiftTerm ──► deflate  ─BLE─�
 | `packages/bluesteer_protocol_dart` | Dart: the same, for the remote |
 | `apps/host` | macOS menu-bar app (`BlueSteerHost`), shared `HostCore`, `RemoteCore` (the console remote) and the `bluesteer` command line tool (`run`, `hook`, `hooks`, `pair`, `hosts`, `connect`) |
 | `apps/remote` | Flutter remote app |
-| `tools` | `pty-recorder`, `term-bench`, `ble-bench-peripheral`, the Flutter `ble-bench-central`, `ios-ui-driver` (an XCUITest bundle that taps, types, swipes and screenshots the remote on a USB-connected iPhone from the Mac), `render-icon.swift`, `bundle-app.sh` |
+| `tools` | `pty-recorder`, `term-bench` (on HostCore's snapshot renderer), `ble-bench-peripheral`, the Flutter `ble-bench-central`, `ios-ui-driver` (an XCUITest bundle that taps, types, swipes and screenshots the remote on a USB-connected iPhone from the Mac), `soak/` (the long-run test, see its README), `render-icon.swift`, `bundle-app.sh` |
 | `assets/icon` | the brand icon sources (SVG) and the rendered macOS icon |
 
 ## Session sources
 
-1. Host-spawned: the host runs the user's login shell in a PTY (v1; agent presets come later). Exited sessions are dropped after their last output is flushed.
-2. Wrapped: `bluesteer run claude` in your own terminal; the PTY output is also streamed to the host over a Unix socket.
+1. Host-spawned: the host starts the user's login shell in a detached helper process (`bluesteer serve-session`, spawned with its own session group and no inherited descriptors) that owns the PTY and talks to the host over the wrapper socket. The shell therefore outlives the host app: after a relaunch the helper re-attaches within a second, sends its screen (with history) so the host's emulator is rebuilt, and remotes re-subscribe to the same session id. The host answers `NewSession` once the helper has reported back. Exited sessions are dropped after their last output is flushed; a helper whose host is away keeps the shell running and retries every second.
+2. Wrapped: `bluesteer run claude` in your own terminal; the wrapper owns the PTY and streams its output to the host over the same socket, re-attaching with its screen whenever a host (re)appears. A host quit never ends the wrapped command.
 3. Attached and discovered sessions (`claude attach`, `claude agents --json`) are deferred to v1.1; the proto keeps their fields reserved.
 
 For every session the host polls the process's working directory every 2 s and broadcasts `SessionState` when it changes, so remotes can show where the shell is.
 
 ## Pairing
 
-The host's "Pair a remote…" window opens a 2-minute pairing window (STATUS characteristic bit 0) and shows a QR code. The remote either scans it (link with a one-time PSK, `Noise_XXpsk3`) or picks the Mac from a nearby list and both sides compare a 6-digit code derived from the Noise handshake hash, confirming on the phone and on the Mac (`SPEC.md` §2.0–2.1). The remote's first message is `RemoteHello` with its device name (Settings on the phone, the hostname for the console remote), which the host stores with the key and shows in its menu.
+The host's "Pair a remote…" window opens a 2-minute pairing window (STATUS characteristic bit 0) and shows a QR code. The remote either scans it (link with a one-time PSK, `Noise_XXpsk3`) or picks the Mac from a nearby list and both sides compare a 6-digit code derived from the Noise handshake hash, confirming on the phone and on the Mac (`SPEC.md` §2.0–2.1). The remote's first message is `RemoteHello` with its device name (Settings on the phone, the hostname for the console remote), which the host stores with the key and shows in its menu. Phones do not get the Mac's name from its advertisement (a macOS peripheral sends no local name next to the service UUID; scan results carry only the cached "Mac"), so the pairing page reads each nearby Mac's Computer Name from `INFO`, and the saved name follows `HostHello` on every connection.
 
 ## What Claude is doing (hooks)
 
@@ -42,7 +42,7 @@ The host's "Pair a remote…" window opens a 2-minute pairing window (STATUS cha
 
 ## Background and reconnect
 
-Remotes reconnect by themselves after a Bluetooth drop (direct reconnect, then scan; backoff up to 10 s) and re-subscribe, which brings a fresh snapshot with up to 500 lines of history. In the background the phone keeps the link (iOS `bluetooth-central` mode; an Android foreground service with its mandatory persistent notification), unsubscribes while hidden and re-subscribes on return, so coming back needs no handshake.
+Remotes reconnect by themselves after a Bluetooth drop: they scan for the Mac again (its address rotates) with 0, 2, 4, 8 and then 10 s between attempts, wait while their own radio is off and try the moment it is back, then re-run the handshake and re-subscribe, which brings a fresh snapshot with up to 500 lines of history. On the Samsung this takes 2–4 s after its radio restarts (it was ~22 s). The BLE link and the scan sit behind small `Link`/`Transport` interfaces so the reconnect logic has unit tests with an in-memory Mac. In the background the phone keeps the link (iOS `bluetooth-central` mode; an Android foreground service with its mandatory persistent notification), unsubscribes while hidden and re-subscribes on return, so coming back needs no handshake. A session that is gone ends the terminal page with a "New terminal" action.
 
 ## Console remote
 
@@ -54,9 +54,9 @@ The host appends connects, disconnects, pairings, revocations, session starts/ex
 
 ## Building
 
-- Host and tools: Swift Package Manager, macOS 14+, Xcode 16+ (`swift build` in `apps/host` and `tools`). `tools/bundle-app.sh` wraps the host executable into a signed `.app`.
+- Host and tools: Swift Package Manager, macOS 14+, Xcode 16+ (`swift build` in `apps/host` and `tools`). `tools/bundle-app.sh` wraps the host executable and the `bluesteer` tool (which the host needs next to it for session helpers) into a signed `.app`. `HostCore` is also a library product so `tools/term-bench` can use the host's snapshot renderer.
 - Remote: Flutter stable (`flutter run` in `apps/remote`). On iOS a debug build only runs while `flutter run` is attached; to run it on its own use `flutter build ios --release` and install with `xcrun devicectl device install app`.
 
 ## Debugging
 
-The host prints link events and every message it receives (except keystrokes) on stderr. `BlueSteerHost --pair` opens the pairing window's logic without the window and confirms code pairings by itself (printing the code); `--login-item on|off|status` drives the login item. `tools/ios-ui-driver/driver.sh` taps, types, swipes, presses Home and screenshots the remote on a USB-connected iPhone; on Android use `adb` (`input text`, `uiautomator dump` sees the Flutter texts, `screencap`, `svc bluetooth disable|enable` for drop tests). `blueutil -p 0|1` toggles the Mac's Bluetooth.
+The host prints timestamped link events (open, first handshake bytes, established) and every message it receives (except keystrokes) on stderr. Start it from a clean environment: a host launched from inside a Claude Code shell hands that session's variables to every helper shell. Quitting the host no longer ends sessions; `exit` in the terminal does. `BlueSteerHost --pair` opens the pairing window's logic without the window and confirms code pairings by itself (printing the code); `--login-item on|off|status` drives the login item. `tools/ios-ui-driver/driver.sh` taps, types, swipes, presses Home and screenshots the remote on a USB-connected iPhone; on Android use `adb` (`input text`, `uiautomator dump` sees the Flutter texts, `screencap`, `svc bluetooth disable|enable` for drop tests). `blueutil -p 0|1` toggles the Mac's Bluetooth.

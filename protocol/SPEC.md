@@ -64,11 +64,11 @@ shown as six digits (`482 913`). The remote sends `RemoteHello`, then displays t
 
 The remote writes selector `0x02` and starts `Noise_XX_25519_ChaChaPoly_SHA256` as initiator. The host rejects a handshake whose remote static key is not in its paired list. The remote rejects a host static key that differs from the one stored at pairing. Both checks happen as soon as the peer's static key is decrypted, before any application payload is accepted.
 
-### 2.4 Hellos
+### 2.3 Hellos
 
 Handshake payloads are empty. The remote's first transport message is always `RemoteHello{protocol_version, device_name, app_version}`; the host stores `device_name` with the paired key (at pairing) and updates it on later connections. The host's first transport message is `HostHello`, sent as soon as the handshake completes in modes `0x01` and `0x02`, and only after both confirmations in mode `0x03`.
 
-### 2.3 Why not BLE pairing
+### 2.4 Why not BLE pairing
 
 Requiring encrypted GATT attributes forces operating-system pairing with different user interfaces on each platform and "Just Works" association on some of them. Keeping attributes open and authenticating at the application layer gives one consistent flow and mutual authentication on every platform.
 
@@ -96,6 +96,8 @@ Every transport message plaintext is exactly one serialised `bluesteer.v1.Envelo
 - `SessionState.status` for a shell session is `BUSY` unless the host learns more from Claude Code hooks relayed by `bluesteer hook` (see `docs/architecture.md`): `UserPromptSubmit` → `BUSY`, `Notification` with `permission_prompt` → `WAITING_PERMISSION`, `Notification` with `idle_prompt`, `Stop` and `SessionStart` → `WAITING_INPUT`, `SessionEnd` → `IDLE`. Remotes show a label for `WAITING_INPUT` and `WAITING_PERMISSION` only.
 - `TermInput` writes bytes to the session's PTY. The host does not acknowledge individual inputs.
 - `Unsubscribe` stops the output stream. A disconnect unsubscribes everything.
+- `Ping{nonce}` is answered with `Pong{nonce}` at any time after the hellos; remotes use it to measure the round trip.
+- Host-spawned sessions live in a helper process that outlives the host app. After a host restart the helper re-attaches within about a second, so a `Subscribe` for a known `session_id` succeeds again; a remote that receives `Ack{ok:false, error:"no such session"}` shortly after reconnecting retries once before treating the session as gone.
 
 ### 4.2 Output stream and sequence numbers
 
@@ -115,7 +117,7 @@ The host keeps, per subscription, a bounded queue of un-sent output (16 KiB plai
 
 ## 6. Reconnection
 
-On a BLE disconnect the remote reconnects (immediately, then with exponential backoff up to 10 s), runs the §2.2 handshake, and re-subscribes to the sessions it was viewing. The host answers with fresh snapshots. Sessions keep running on the host regardless of remote connectivity.
+On a BLE disconnect the remote scans for the host again and connects to it (the host's address rotates, so a direct reconnect to the old address is not attempted), with 0, 2, 4, 8 and then 10 s between attempts. While the remote's own radio is off it waits; when the radio returns it tries at once. Then it runs the §2.2 handshake and re-subscribes to the sessions it was viewing; the host answers with fresh snapshots. Sessions keep running on the host regardless of remote connectivity, and host-spawned sessions even survive a host restart (§4.1). Measured on 2026-10-29: 2–4 s from an Android phone's radio coming back to the link being established.
 
 ## 7. Versioning
 
