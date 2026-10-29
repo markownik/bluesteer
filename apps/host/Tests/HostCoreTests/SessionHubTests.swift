@@ -100,6 +100,36 @@ final class SessionHubTests: XCTestCase {
         guard case .termSnapshot? = received.last?.body else { return XCTFail("expected a snapshot once the link drained") }
     }
 
+    /// A session whose owner re-attached under the same id keeps its subscribers,
+    /// who get the new screen before any further output.
+    func testReattachGivesSubscribersAFreshSnapshot() throws {
+        let hub = SessionHub()
+        let id = SessionID()
+        let old = FakeSession(id: id, rows: 5, cols: 20)
+        hub.add(old)
+        var received: [BSEnvelope] = []
+        hub.send = { env, _ in received.append(env) }
+        hub.pendingBytes = { _ in 0 }
+        hub.subscribe(link: UUID(), session: id, rows: 5, cols: 20)
+        old.emit(Data("old-output\r\n".utf8))
+        received.removeAll()
+
+        let new = FakeSession(id: id, rows: 5, cols: 20)
+        new.emit(Data("restored-screen\r\n".utf8))
+        var reattached: SessionID?
+        hub.onSessionReattached = { reattached = $0.id }
+        hub.add(new)
+        XCTAssertEqual(reattached, id)
+        XCTAssertTrue(hub.isCurrent(new))
+        XCTAssertFalse(hub.isCurrent(old))
+
+        hub.flushAll()
+        guard case .termSnapshot(let snap)? = received.first?.body else { return XCTFail("expected a snapshot, got \(received)") }
+        let vt = String(decoding: try inflate(snap.vt), as: UTF8.self)
+        XCTAssertTrue(vt.contains("restored-screen"), vt)
+        XCTAssertFalse(vt.contains("old-output"), "the old emulator's pending output is gone")
+    }
+
     /// The placeholder cell after a wide character is not rendered as a space.
     func testSnapshotSkipsWideCharacterTails() throws {
         let session = FakeSession(rows: 3, cols: 20)
@@ -149,7 +179,7 @@ struct SeededRNG: RandomNumberGenerator {
 
 /// An in-memory session: output is whatever the test feeds it.
 final class FakeSession: EmulatedSession, TerminalSession {
-    let id = SessionID()
+    let id: SessionID
     private(set) var status: BSSessionStatus = .busy
     let pid: pid_t = 0
     var cwd = "/tmp"
@@ -157,7 +187,10 @@ final class FakeSession: EmulatedSession, TerminalSession {
     var onExit: (() -> Void)?
     var written = Data()
 
-    override init(rows: Int, cols: Int) { super.init(rows: rows, cols: cols) }
+    init(id: SessionID = SessionID(), rows: Int, cols: Int) {
+        self.id = id
+        super.init(rows: rows, cols: cols)
+    }
 
     func emit(_ data: Data) {
         feed(data)

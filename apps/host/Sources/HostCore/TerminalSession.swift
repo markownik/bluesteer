@@ -30,7 +30,7 @@ public class EmulatedSession {
     let terminal: Terminal
     let delegate = NullTerminalDelegate()
 
-    init(rows: Int, cols: Int) {
+    public init(rows: Int, cols: Int) {
         terminal = Terminal(delegate: delegate, options: TerminalOptions(cols: max(cols, 2), rows: max(rows, 2)))
     }
 
@@ -38,7 +38,8 @@ public class EmulatedSession {
     public var cols: Int { terminal.cols }
     public var title: String? { delegate.title }
 
-    func feed(_ data: Data) { terminal.feed(byteArray: [UInt8](data)) }
+    public func feed(_ data: Data) { terminal.feed(byteArray: [UInt8](data)) }
+    public func resizeEmulator(rows: Int, cols: Int) { terminal.resize(cols: max(cols, 2), rows: max(rows, 2)) }
 
     public func snapshot(scrollbackLines: Int) -> Data { TerminalSnapshot.render(terminal, scrollbackLines: scrollbackLines) }
 }

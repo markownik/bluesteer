@@ -2,8 +2,10 @@ import BlueSteerProtocol
 import Darwin
 import Foundation
 
-/// A terminal the user runs through `bluesteer run`: the wrapper owns the PTY
-/// and streams its output here; input from remotes goes back over the socket.
+/// A terminal whose PTY belongs to another process: the `bluesteer run`
+/// wrapper in the user's own terminal, or the detached helper behind a
+/// host-spawned session. Output arrives over the socket; input (and, for
+/// host-spawned sessions, resizes) go back the same way.
 public final class WrappedSession: EmulatedSession, TerminalSession {
     public let id: SessionID
     public let hello: WrapperHello
@@ -14,6 +16,8 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
     private let fd: Int32
 
     public var pid: pid_t { hello.pid }
+    /// Started by the host (through the helper) rather than in the user's terminal.
+    public var isHostSpawned: Bool { hello.source == WrapperHello.hostSpawned }
 
     init(hello: WrapperHello, fd: Int32) {
         self.hello = hello
@@ -32,6 +36,9 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
             if let d = try? JSONDecoder().decode([String: Int].self, from: frame.payload), let r = d["rows"], let c = d["cols"] {
                 terminal.resize(cols: max(c, 2), rows: max(r, 2))
             }
+        case WrapperFrame.screen:
+            // The wrapper's own screen (with history) at attach time: replay it into our emulator.
+            feed(frame.payload)
         default: break
         }
     }
@@ -46,23 +53,30 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
         self.status = status
     }
 
-    public func write(_ data: Data) {
-        let frame = WrapperFrame.encode(WrapperFrame.input, data)
-        frame.withUnsafeBytes { _ = Darwin.send(fd, $0.baseAddress, frame.count, 0) }
+    public func write(_ data: Data) { send(WrapperFrame.input, data) }
+
+    /// Host-spawned sessions take the remote's size; a wrapped session keeps
+    /// the real terminal's size and remotes follow it.
+    public func resize(rows: Int, cols: Int) {
+        guard isHostSpawned, rows > 0, cols > 0, rows != terminal.rows || cols != terminal.cols else { return }
+        terminal.resize(cols: cols, rows: rows)
+        send(WrapperFrame.resizeTo, Data("{\"rows\":\(rows),\"cols\":\(cols)}".utf8))
     }
 
-    /// The real terminal decides the size; remotes follow it.
-    public func resize(rows: Int, cols: Int) {}
+    private func send(_ type: UInt8, _ payload: Data) {
+        let frame = WrapperFrame.encode(type, payload)
+        frame.withUnsafeBytes { _ = Darwin.send(fd, $0.baseAddress, frame.count, 0) }  // EPIPE ends the session via the reader
+    }
 
     public func stop(signal: Int32) { kill(hello.pid, signal) }
 
     public var state: BSSessionState {
         BSSessionState.with {
             $0.sessionID = id.rawValue
-            $0.source = .wrapped
+            $0.source = isHostSpawned ? .hostSpawned : .wrapped
             $0.command = hello.command.joined(separator: " ")
             $0.cwd = cwd
-            $0.title = title ?? (hello.command.first as NSString?)?.lastPathComponent ?? ""
+            $0.title = title ?? hello.title ?? (hello.command.first as NSString?)?.lastPathComponent ?? ""
             $0.status = status
             $0.rows = UInt32(rows)
             $0.cols = UInt32(cols)
@@ -70,19 +84,19 @@ public final class WrappedSession: EmulatedSession, TerminalSession {
     }
 }
 
-/// Listens on the local Unix socket for `bluesteer run` wrappers.
+/// Listens on the local Unix socket for `bluesteer run` wrappers and session helpers.
 public final class WrapperSocketServer {
     public var onSession: ((WrappedSession) -> Void)?
     public var onHook: ((HookEvent) -> Void)?
+    private let path: String
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private var connections: [Int32: (parser: WrapperFrameParser, session: WrappedSession?, source: DispatchSourceRead)] = [:]
     private let queue = DispatchQueue(label: "dev.bluesteer.wrapper")
 
-    public init() {}
+    public init(path: String = WrapperSocket.path) { self.path = path }
 
     public func start() throws {
-        let path = WrapperSocket.path
         unlink(path)
         listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard listenFD >= 0 else { throw POSIXError(.EIO) }
@@ -96,8 +110,23 @@ public final class WrapperSocketServer {
         chmod(path, 0o600)
         let source = DispatchSource.makeReadSource(fileDescriptor: listenFD, queue: queue)
         source.setEventHandler { [weak self] in self?.accept() }
+        source.setCancelHandler { [listenFD] in close(listenFD) }
         source.resume()
         acceptSource = source
+    }
+
+    /// Stops listening and drops every connection (their sessions end).
+    public func stop() {
+        queue.sync {
+            acceptSource?.cancel()
+            acceptSource = nil
+            for (_, conn) in connections {
+                conn.source.cancel()
+                DispatchQueue.main.async { conn.session?.closed() }
+            }
+            connections.removeAll()
+        }
+        unlink(path)
     }
 
     private func accept() {

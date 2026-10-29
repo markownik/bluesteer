@@ -56,6 +56,9 @@ public final class HostController {
     private var dead: Set<BLEPeripheralService.LinkID> = []
     private var pairingTimer: Timer?
     private let instanceID: Data
+    /// `NewSession` commands whose helper has not connected yet, by the session id we gave it.
+    private var pendingSessions: [SessionID: (link: BLEPeripheralService.LinkID, cmdID: UInt64, timer: Timer)] = [:]
+    static let sessionStartTimeout: TimeInterval = 10
 
     public init(store: PairingStore, displayName: String = ProcessInfo.processInfo.hostName) throws {
         self.store = store
@@ -72,7 +75,7 @@ public final class HostController {
         }
         hub.pendingBytes = { [weak self] link in self?.ble.pendingBytes(for: link) ?? 0 }
         hub.onSessionChanged = { [weak self] session in
-            guard let self else { return }
+            guard let self, hub.isCurrent(session) else { return }
             broadcast(BSEnvelope.with { $0.sessionState = session.state })
             if session.status == .exited {
                 audit.record("session exited id=\(session.id.rawValue) code=\(session.state.exitCode)")
@@ -83,7 +86,18 @@ public final class HostController {
             let st = session.state
             self?.audit.record("session started id=\(st.sessionID) source=\(st.source) command=\"\(st.command)\" cwd=\(st.cwd)")
         }
-        wrapperServer.onSession = { [weak self] session in self?.hub.add(session) }
+        hub.onSessionReattached = { [weak self] session in
+            self?.audit.record("session re-attached id=\(session.id.rawValue) source=\(session.state.source)")
+        }
+        wrapperServer.onSession = { [weak self] session in
+            guard let self else { return }
+            hub.add(session)
+            // A helper we started reports back: now the remote may subscribe.
+            if let pending = pendingSessions.removeValue(forKey: session.id) {
+                pending.timer.invalidate()
+                try? ack(pending.cmdID, to: pending.link, sessionID: session.id)
+            }
+        }
         wrapperServer.onHook = { [weak self] event in self?.hub.hook(event) }
         try wrapperServer.start()
         audit.record("host started version=\(HostInfo.version) name=\"\(displayName)\"")
@@ -341,11 +355,19 @@ public final class HostController {
         case .newSession(let cmd):
             guard let command = Self.presets[cmd.preset] else { try ack(cmd.cmdID, to: id, error: "unknown preset \(cmd.preset)"); return }
             let cwd = cmd.cwd.isEmpty ? NSHomeDirectory() : cmd.cwd
+            // The session runs in a detached helper that outlives us; the Ack waits for its hello.
+            let sid = SessionID()
             do {
-                let session = try hub.start(command: command, cwd: cwd, rows: Int(cmd.rows), cols: Int(cmd.cols))
-                try ack(cmd.cmdID, to: id, sessionID: session.id)
+                try SessionLauncher.spawn(id: sid, command: command, cwd: cwd, rows: Int(cmd.rows), cols: Int(cmd.cols))
+                let timer = Timer(timeInterval: Self.sessionStartTimeout, repeats: false) { [weak self] _ in
+                    guard let self, let pending = pendingSessions.removeValue(forKey: sid) else { return }
+                    log("session \(sid.rawValue) helper did not report back")
+                    try? ack(pending.cmdID, to: pending.link, error: "the session helper did not start")
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                pendingSessions[sid] = (id, cmd.cmdID, timer)
             } catch {
-                try ack(cmd.cmdID, to: id, error: "\(error)")
+                try ack(cmd.cmdID, to: id, error: error.localizedDescription)
             }
         case .subscribe(let cmd):
             let sid = SessionID(rawValue: cmd.sessionID)

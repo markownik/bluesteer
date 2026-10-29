@@ -7,7 +7,9 @@ public enum WrapperFrame {
     public static let output: UInt8 = 0x02     // wrapper → host, raw PTY output
     public static let resize: UInt8 = 0x03     // wrapper → host, JSON {"rows":..,"cols":..}
     public static let hook: UInt8 = 0x04       // `bluesteer hook` → host, JSON HookEvent; no hello
+    public static let screen: UInt8 = 0x05     // wrapper → host, VT snapshot of the wrapper's emulator (right after hello)
     public static let input: UInt8 = 0x10      // host → wrapper, bytes for the PTY
+    public static let resizeTo: UInt8 = 0x11   // host → wrapper, JSON {"rows":..,"cols":..} (host-spawned sessions follow the remote)
 
     public static func encode(_ type: UInt8, _ payload: Data) -> Data {
         var d = Data([type])
@@ -26,9 +28,17 @@ public struct WrapperHello: Codable {
     public var pid: Int32
     /// The `BLUESTEER_SESSION` value the wrapper exported, so hook events match the session.
     public var sessionId: String?
-    public init(command: [String], cwd: String, rows: Int, cols: Int, pid: Int32, sessionId: String? = nil) {
-        self.command = command; self.cwd = cwd; self.rows = rows; self.cols = cols; self.pid = pid; self.sessionId = sessionId
+    /// `hostSpawned` for the session helper, `wrapped` (or absent) for `bluesteer run`.
+    public var source: String?
+    /// The terminal title the wrapper's emulator knows, if any.
+    public var title: String?
+    public init(command: [String], cwd: String, rows: Int, cols: Int, pid: Int32, sessionId: String? = nil, source: String? = nil, title: String? = nil) {
+        self.command = command; self.cwd = cwd; self.rows = rows; self.cols = cols; self.pid = pid
+        self.sessionId = sessionId; self.source = source; self.title = title
     }
+
+    public static let hostSpawned = "hostSpawned"
+    public static let wrapped = "wrapped"
 }
 
 /// A Claude Code hook event relayed by `bluesteer hook <Event>` (docs/architecture.md).

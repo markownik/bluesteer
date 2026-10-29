@@ -21,6 +21,8 @@ case "run":
 case "hook":
     guard args.count > 1 else { fputs("usage: bluesteer hook <Event>\n", stderr); exit(64) }
     exit(relayHook(args[1]))
+case "serve-session":
+    exit(serveSession(Array(args.dropFirst())))
 case "hooks":
     HookInstaller.refreshCLILink()
     do {
@@ -61,7 +63,8 @@ func relayHook(_ event: String) -> Int32 {
     return 0
 }
 
-/// Runs `command` in a PTY attached to this terminal and mirrors it to the host app.
+/// Runs `command` in a PTY attached to this terminal and mirrors it to the host
+/// app, whenever one is running: the command is never tied to the host's life.
 func runWrapped(_ command: [String]) -> Int32 {
     let terminal = RawTerminal()
     let stdinIsTTY = terminal.isTTY
@@ -79,28 +82,34 @@ func runWrapped(_ command: [String]) -> Int32 {
         execvp(command[0], cargs)
         perror("execvp"); _exit(127)
     }
+    _ = fcntl(master, F_SETFD, FD_CLOEXEC)
 
-    // Connect to the host app; without it the command still runs, just unbridged.
-    let sock = connectToHost()
-    if sock >= 0 {
-        let hello = WrapperHello(command: command, cwd: FileManager.default.currentDirectoryPath,
-                                 rows: Int(ws.ws_row), cols: Int(ws.ws_col), pid: pid, sessionId: sessionID)
-        sendFrame(sock, WrapperFrame.hello, try! JSONEncoder().encode(hello))
-    } else {
-        fputs("bluesteer: host app not running, command is not bridged\n", stderr)
-    }
+    // A headless copy of the screen, so the host gets the current state when it (re)attaches.
+    let emulator = EmulatedSession(rows: size.rows, cols: size.cols)
+    let emulatorQueue = DispatchQueue(label: "wrapper.emulator")
+    let client = WrapperClient(
+        hello: {
+            emulatorQueue.sync {
+                WrapperHello(command: command, cwd: FileManager.default.currentDirectoryPath, rows: emulator.rows, cols: emulator.cols,
+                             pid: pid, sessionId: sessionID, source: WrapperHello.wrapped, title: emulator.title)
+            }
+        },
+        screen: { emulatorQueue.sync { emulator.snapshot(scrollbackLines: 500) } })
+    client.onInput = { writeAll(master, $0) }
+    client.start()
 
     terminal.enterRaw()
     let winch = RawTerminal.onResize(queue: .main) {
         var now = winsize()
         if ioctl(STDOUT_FILENO, TIOCGWINSZ, &now) == 0 {
             _ = ioctl(master, TIOCSWINSZ, &now)
-            if sock >= 0 { sendFrame(sock, WrapperFrame.resize, Data("{\"rows\":\(now.ws_row),\"cols\":\(now.ws_col)}".utf8)) }
+            emulatorQueue.async { emulator.resizeEmulator(rows: Int(now.ws_row), cols: Int(now.ws_col)) }
+            client.send(rows: Int(now.ws_row), cols: Int(now.ws_col))
         }
     }
     _ = winch
 
-    // PTY → real terminal + host
+    // PTY → real terminal + emulator + host
     DispatchQueue(label: "pty.out").async {
         var buf = [UInt8](repeating: 0, count: 65536)
         while true {
@@ -108,7 +117,8 @@ func runWrapped(_ command: [String]) -> Int32 {
             if n <= 0 { break }
             let data = Data(buf[0..<n])
             writeAll(STDOUT_FILENO, data)
-            if sock >= 0 { sendFrame(sock, WrapperFrame.output, data) }
+            emulatorQueue.async { emulator.feed(data) }
+            client.send(output: data)
         }
     }
     // real keyboard → PTY
@@ -120,27 +130,55 @@ func runWrapped(_ command: [String]) -> Int32 {
             _ = write(master, buf, n)
         }
     }
-    // host (remote keystrokes) → PTY
-    if sock >= 0 {
-        DispatchQueue(label: "host.in").async {
-            var parser = WrapperFrameParser()
-            var buf = [UInt8](repeating: 0, count: 65536)
-            while true {
-                let n = read(sock, &buf, buf.count)
-                if n <= 0 { break }
-                for frame in parser.receive(Data(buf[0..<n])) where frame.type == WrapperFrame.input {
-                    writeAll(master, frame.payload)
-                }
-            }
-        }
-    }
 
     var status: Int32 = 0
     waitpid(pid, &status, 0)
     usleep(50_000)
     terminal.restore()
-    if sock >= 0 { close(sock) }
+    let drained = DispatchSemaphore(value: 0)
+    client.stop { drained.signal() }
+    _ = drained.wait(timeout: .now() + 1)
     return (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
+}
+
+/// The detached helper behind every host-spawned session (`SessionLauncher`):
+/// owns the PTY and bridges it to the host app for as long as the command runs.
+///   bluesteer serve-session --id <uuid> --cwd <dir> --rows R --cols C -- <command...>
+func serveSession(_ args: [String]) -> Int32 {
+    var id = UUID().uuidString, cwd = NSHomeDirectory(), rows = 40, cols = 120
+    var command: [String] = []
+    var rest = args[...]
+    while let flag = rest.popFirst() {
+        switch flag {
+        case "--id": id = rest.popFirst() ?? id
+        case "--cwd": cwd = rest.popFirst() ?? cwd
+        case "--rows": rows = Int(rest.popFirst() ?? "") ?? rows
+        case "--cols": cols = Int(rest.popFirst() ?? "") ?? cols
+        case "--": command = Array(rest); rest = []
+        default: fputs("usage: bluesteer serve-session --id <uuid> --cwd <dir> --rows R --cols C -- <command...>\n", stderr); return 64
+        }
+    }
+    guard !command.isEmpty else { fputs("bluesteer serve-session: no command\n", stderr); return 64 }
+
+    let pty: PtySession
+    do { pty = try PtySession(id: SessionID(rawValue: id), command: command, cwd: cwd, rows: rows, cols: cols) } catch {
+        fputs("bluesteer serve-session: \(error)\n", stderr); return 1
+    }
+    // PtySession feeds its emulator on the main queue; the client asks for the screen from its own queue.
+    let client = WrapperClient(
+        hello: {
+            DispatchQueue.main.sync {
+                WrapperHello(command: command, cwd: cwd, rows: pty.rows, cols: pty.cols, pid: pty.pid,
+                             sessionId: id, source: WrapperHello.hostSpawned, title: pty.title)
+            }
+        },
+        screen: { DispatchQueue.main.sync { pty.snapshot(scrollbackLines: 500) } })
+    pty.onOutput = { client.send(output: $0) }
+    pty.onExit = { client.stop { exit(pty.exitCode) } }
+    client.onInput = { pty.write($0) }
+    client.onResize = { r, c in DispatchQueue.main.async { pty.resize(rows: r, cols: c) } }
+    client.start()
+    dispatchMain()
 }
 
 func connectToHost() -> Int32 {

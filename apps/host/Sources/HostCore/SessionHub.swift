@@ -44,6 +44,8 @@ public final class SessionHub {
     public var onSessionChanged: ((TerminalSession) -> Void)?
     /// Called once when a session is registered (audit).
     public var onSessionAdded: ((TerminalSession) -> Void)?
+    /// Called when a session's owner reconnected under a known id (e.g. after a host restart).
+    public var onSessionReattached: ((TerminalSession) -> Void)?
 
     public init() {}
 
@@ -61,7 +63,10 @@ public final class SessionHub {
     }
 
     /// Registers any session (host-spawned or wrapped) and starts streaming it.
+    /// A known id means the session's owner re-attached: subscribers keep their
+    /// subscription and get the new emulator's screen first.
     public func add(_ session: TerminalSession) {
+        let reattached = sessions[session.id] != nil
         sessions[session.id] = session
         session.onOutput = { [weak self, id = session.id] data in self?.output(data, from: id) }
         session.onExit = { [weak self, weak session] in
@@ -71,9 +76,21 @@ public final class SessionHub {
             onSessionChanged?(session)
         }
         startTimer()
-        onSessionAdded?(session)
+        if reattached {
+            for link in subscriptions.keys {
+                subscriptions[link]?[session.id]?.needsSnapshot = true
+                subscriptions[link]?[session.id]?.pending.removeAll()
+            }
+            onSessionReattached?(session)
+        } else {
+            onSessionAdded?(session)
+        }
         onSessionChanged?(session)
     }
+
+    /// Whether `session` is the current owner of its id (an older object with the
+    /// same id may still report its exit after a re-attach).
+    public func isCurrent(_ session: TerminalSession) -> Bool { sessions[session.id] === session }
 
     public func stop(_ id: SessionID, signal: Int32) {
         sessions[id]?.stop(signal: signal == 0 ? SIGTERM : signal)
