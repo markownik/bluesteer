@@ -6,7 +6,7 @@ final class HostControllerTests: XCTestCase {
     func testDisconnectAllStopsAcceptingUntilResumed() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("bluesteer-ctl-\(UUID().uuidString.prefix(8))")
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        let controller = try HostController(store: try PairingStore(directory: dir), displayName: "test-mac",
+        let controller = try HostController(store: try PairingStore(directory: dir, keyStorage: .file), displayName: "test-mac",
                                             socketPath: dir.appendingPathComponent("s.sock").path, audit: AuditLog(directory: dir))
         controller.beginPairing()
         XCTAssertTrue(controller.pairingOpen)
