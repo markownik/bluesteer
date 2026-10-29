@@ -143,6 +143,9 @@ public final class SessionHub {
         subscriptions[link] = nil
     }
 
+    /// Live subscriptions across all links (leak checks in tests).
+    public var activeSubscriptions: Int { subscriptions.values.reduce(0) { $0 + $1.count } }
+
     public func input(_ data: Data, session id: SessionID) {
         sessions[id]?.write(data)
     }

@@ -17,21 +17,33 @@ final class RemoteSessionTests: XCTestCase {
 
     /// A minimal host: selector byte, SecureChannel, hub wiring for the messages the remote uses.
     final class MiniHost {
-        let hub = SessionHub()
+        let hub: SessionHub
         let link = UUID()
         var channel: SecureChannel?
-        let key = NoiseKeyPair()
+        let key: NoiseKeyPair
         let store: Set<Data>
         let acceptUnknown: Bool
         var toRemote: ((Data) -> Void)?
         var pairingCode: String?
         var paired = false
 
-        init(pairedKeys: Set<Data>, acceptUnknown: Bool) {
+        /// With its own hub by default; soak tests share one hub across many hosts.
+        init(pairedKeys: Set<Data>, acceptUnknown: Bool, hub: SessionHub? = nil, key: NoiseKeyPair = NoiseKeyPair()) {
             store = pairedKeys
             self.acceptUnknown = acceptUnknown
-            hub.pendingBytes = { _ in 0 }
-            hub.send = { [weak self] env, _ in self?.send(env) }
+            self.key = key
+            self.hub = hub ?? SessionHub()
+            if hub == nil {
+                self.hub.pendingBytes = { _ in 0 }
+                self.hub.send = { [weak self] env, _ in self?.send(env) }
+            }
+        }
+
+        /// The central went away: the hub forgets this link's subscriptions.
+        func close() {
+            hub.linkClosed(link)
+            channel = nil
+            toRemote = nil
         }
 
         func receive(_ bytes: Data) throws {

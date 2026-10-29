@@ -1,32 +1,39 @@
-// term-bench: replays a pty-recorder recording through a headless SwiftTerm
+// term-bench: replays a pty-recorder recording through the host's headless
 // emulator and reports how many bytes per second the BlueSteer host would
-// have to push over BLE under three strategies:
+// have to push over BLE:
 //   raw        – the PTY byte stream as is
-//   deflate    – the same stream through one raw-deflate stream, sync-flushed every tick
-//   snapshot   – a full-screen snapshot (VT serialisation) taken every `--snapshot-every` seconds
+//   deflate    – the same stream through the host's raw-deflate stream, sync-flushed
+//                per piece of at most 3000 bytes (SessionHub.pieceSize), reset at every snapshot
+//   wire       – deflate plus the per-message overhead of the protobuf envelope,
+//                the Noise tag and the length prefix (SPEC.md §3–4)
+//   snapshot   – a full-screen snapshot (HostCore's TerminalSnapshot) every `--snapshot-every` seconds
 //
-//   term-bench session.rec [--tick 50] [--snapshot-every 5]
+//   term-bench session.rec [--tick 50] [--snapshot-every 5] [--history 500]
 
 import Foundation
-import SwiftTerm
+import HostCore
 import zlib
 
 // --- args ---------------------------------------------------------------
 
 var args = Array(CommandLine.arguments.dropFirst())
-guard !args.isEmpty else {
-    print("usage: term-bench <file.rec> [--tick ms] [--snapshot-every s]")
-    exit(64)
-}
+let usage = "usage: term-bench <file.rec> [--tick ms] [--snapshot-every s] [--history lines]"
+guard !args.isEmpty else { print(usage); exit(64) }
 let path = args.removeFirst()
 var tickMs = 50
 var snapshotEvery = 5.0
+var historyLines = 500
+func value(for flag: String) -> String {
+    guard !args.isEmpty else { print("\(flag) needs a value\n\(usage)"); exit(64) }
+    return args.removeFirst()
+}
 while !args.isEmpty {
     let a = args.removeFirst()
     switch a {
-    case "--tick": tickMs = Int(args.removeFirst())!
-    case "--snapshot-every": snapshotEvery = Double(args.removeFirst())!
-    default: print("unknown option \(a)"); exit(64)
+    case "--tick": tickMs = Int(value(for: a)) ?? tickMs
+    case "--snapshot-every": snapshotEvery = Double(value(for: a)) ?? snapshotEvery
+    case "--history": historyLines = Int(value(for: a)) ?? historyLines
+    default: print("unknown option \(a)\n\(usage)"); exit(64)
     }
 }
 
@@ -52,7 +59,7 @@ func readRecording(_ path: String) -> [Entry] {
     return entries
 }
 
-// --- deflate stream (raw, sync flush per tick) ----------------------------
+// --- deflate stream (raw, sync flush per piece, as the host does) ----------
 
 final class DeflateStream {
     private var strm = z_stream()
@@ -60,8 +67,9 @@ final class DeflateStream {
     init() {
         deflateInit2_(&strm, 6, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
     }
-    /// Compresses `input` and sync-flushes; returns the number of bytes produced.
-    func push(_ input: Data, flush: Bool) -> Int {
+    deinit { deflateEnd(&strm) }
+    /// Compresses `input` with a sync flush; returns the number of bytes produced.
+    func push(_ input: Data) -> Int {
         var produced = 0
         var inBytes = [UInt8](input)
         inBytes.withUnsafeMutableBufferPointer { inPtr in
@@ -71,120 +79,84 @@ final class DeflateStream {
                 out.withUnsafeMutableBufferPointer { outPtr in
                     strm.next_out = outPtr.baseAddress
                     strm.avail_out = UInt32(outPtr.count)
-                    deflate(&strm, flush ? Z_SYNC_FLUSH : Z_NO_FLUSH)
+                    deflate(&strm, Z_SYNC_FLUSH)
                     produced += outPtr.count - Int(strm.avail_out)
                 }
             } while strm.avail_out == 0
         }
         return produced
     }
-    static func oneShot(_ input: Data) -> Int {
-        let s = DeflateStream()
-        return s.push(input, flush: true)
-    }
+    static func oneShot(_ input: Data) -> Int { DeflateStream().push(input) }
 }
 
-// --- headless terminal ----------------------------------------------------
+// --- the wire format's fixed costs -----------------------------------------
 
-final class Delegate: TerminalDelegate {
-    func send(source: Terminal, data: ArraySlice<UInt8>) {}
-}
-
-/// Serialises the visible screen as VT sequences a remote emulator can replay.
-func snapshot(_ t: Terminal) -> Data {
-    var s = "\u{1b}[H\u{1b}[2J"
-    var lastAttr: Attribute? = nil
-    for row in 0..<t.rows {
-        s += "\u{1b}[\(row + 1);1H"
-        var line = ""
-        for col in 0..<t.cols {
-            guard let cd = t.getCharData(col: col, row: row) else { continue }
-            if cd.attribute != lastAttr {
-                line += sgr(cd.attribute)
-                lastAttr = cd.attribute
-            }
-            let ch = cd.getCharacter()
-            line.append(ch == "\0" ? " " : ch)
-        }
-        s += line
-    }
-    s += "\u{1b}[0m\u{1b}[\(t.getCursorLocation().y + 1);\(t.getCursorLocation().x + 1)H"
-    return s.data(using: .utf8)!
-}
-
-func sgr(_ a: Attribute) -> String {
-    var codes = ["0"]
-    if a.style.contains(.bold) { codes.append("1") }
-    if a.style.contains(.dim) { codes.append("2") }
-    if a.style.contains(.italic) { codes.append("3") }
-    if a.style.contains(.underline) { codes.append("4") }
-    if a.style.contains(.inverse) { codes.append("7") }
-    codes.append(contentsOf: colorCodes(a.fg, fg: true))
-    codes.append(contentsOf: colorCodes(a.bg, fg: false))
-    return "\u{1b}[" + codes.joined(separator: ";") + "m"
-}
-
-func colorCodes(_ c: Attribute.Color, fg: Bool) -> [String] {
-    switch c {
-    case .defaultColor, .defaultInvertedColor: return []
-    case .ansi256(let code):
-        if code < 8 { return [String((fg ? 30 : 40) + Int(code))] }
-        if code < 16 { return [String((fg ? 90 : 100) + Int(code) - 8)] }
-        return [fg ? "38" : "48", "5", String(code)]
-    case .trueColor(let r, let g, let b):
-        return [fg ? "38" : "48", "2", String(r), String(g), String(b)]
-    }
-}
+/// Plaintext per TermOutput (SessionHub.pieceSize).
+let pieceSize = 3000
+/// Protobuf envelope with a 36-character session id and small varints (~60 B),
+/// the Noise AEAD tag (16 B) and the frame length (2 B).
+let messageOverhead = 60 + 16 + 2
 
 // --- replay ---------------------------------------------------------------
 
 let entries = readRecording(path)
-let terminal = Terminal(delegate: Delegate(), options: TerminalOptions(cols: 120, rows: 40))
-let deflater = DeflateStream()
+let emulator = EmulatedSession(rows: 40, cols: 120)
+var deflater = DeflateStream()
 
 var rawPerSecond: [Int: Int] = [:]
 var deflatePerSecond: [Int: Int] = [:]
+var wirePerSecond: [Int: Int] = [:]
 var snapshotSizes: [(raw: Int, deflated: Int)] = []
 var tickBuffer = Data()
 var nextTick: UInt64 = 0
 var nextSnapshot: UInt64 = 0
 let tickMicros = UInt64(tickMs) * 1000
 let snapshotMicros = UInt64(snapshotEvery * 1_000_000)
-var totalRaw = 0, totalDeflate = 0
+var totalRaw = 0, totalDeflate = 0, totalWire = 0, messages = 0
 
 func flushTick(at micros: UInt64) {
-    if !tickBuffer.isEmpty {
-        let produced = deflater.push(tickBuffer, flush: true)
-        let sec = Int(micros / 1_000_000)
+    guard !tickBuffer.isEmpty else { return }
+    let sec = Int(micros / 1_000_000)
+    var offset = 0
+    while offset < tickBuffer.count {
+        let piece = tickBuffer[offset..<min(offset + pieceSize, tickBuffer.count)]
+        let produced = deflater.push(Data(piece))
         deflatePerSecond[sec, default: 0] += produced
+        wirePerSecond[sec, default: 0] += produced + messageOverhead
         totalDeflate += produced
-        tickBuffer.removeAll(keepingCapacity: true)
+        totalWire += produced + messageOverhead
+        messages += 1
+        offset += piece.count
     }
+    tickBuffer.removeAll(keepingCapacity: true)
 }
 
 var lastMicros: UInt64 = 0
 for e in entries {
     while e.micros >= nextTick { flushTick(at: nextTick); nextTick += tickMicros }
     while e.micros >= nextSnapshot {
-        let snap = snapshot(terminal)
+        let snap = emulator.snapshot(scrollbackLines: 0)
         snapshotSizes.append((snap.count, DeflateStream.oneShot(snap)))
+        deflater = DeflateStream() // SPEC.md §4.3: the stream restarts at every snapshot
         nextSnapshot += snapshotMicros
     }
     switch e.type {
     case 0:
-        terminal.feed(byteArray: [UInt8](e.payload))
+        emulator.feed(e.payload)
         tickBuffer.append(e.payload)
         rawPerSecond[Int(e.micros / 1_000_000), default: 0] += e.payload.count
         totalRaw += e.payload.count
     case 1:
         let rows = Int(e.payload.withUnsafeBytes { $0.loadUnaligned(as: UInt16.self) }.littleEndian)
         let cols = Int(e.payload.advanced(by: 2).withUnsafeBytes { $0.loadUnaligned(as: UInt16.self) }.littleEndian)
-        terminal.resize(cols: cols, rows: rows)
+        emulator.resizeEmulator(rows: rows, cols: cols)
     default: break
     }
     lastMicros = e.micros
 }
 flushTick(at: lastMicros)
+let historySnapshot = emulator.snapshot(scrollbackLines: historyLines)
+let historySnapshotDeflated = DeflateStream.oneShot(historySnapshot)
 
 func percentile(_ values: [Int], _ p: Double) -> Int {
     guard !values.isEmpty else { return 0 }
@@ -194,23 +166,26 @@ func percentile(_ values: [Int], _ p: Double) -> Int {
 }
 
 let seconds = max(1, Int(lastMicros / 1_000_000) + 1)
-let rawSeries = (0..<seconds).map { rawPerSecond[$0, default: 0] }
-let defSeries = (0..<seconds).map { deflatePerSecond[$0, default: 0] }
-let activeRaw = rawSeries.filter { $0 > 0 }
-let activeDef = defSeries.filter { $0 > 0 }
-
+func series(_ m: [Int: Int]) -> [Int] { (0..<seconds).map { m[$0, default: 0] } }
 func kb(_ b: Int) -> String { String(format: "%6.1f KB", Double(b) / 1024) }
+func row(_ name: String, _ total: Int, _ m: [Int: Int]) -> String {
+    let all = series(m), active = all.filter { $0 > 0 }
+    let meanActive = active.isEmpty ? 0 : active.reduce(0, +) / active.count
+    return "\(name.padding(toLength: 11, withPad: " ", startingAt: 0))/s   \(kb(total / seconds))  \(kb(meanActive))   \(kb(percentile(active, 0.5)))   \(kb(percentile(active, 0.95)))   \(kb(all.max() ?? 0))"
+}
 
 print("recording: \(path)")
-print("duration:  \(seconds) s, \(entries.count) entries, tick \(tickMs) ms, terminal \(terminal.cols)x\(terminal.rows)")
+print("duration:  \(seconds) s, \(entries.count) entries, tick \(tickMs) ms, terminal \(emulator.cols)x\(emulator.rows), \(messages) messages")
 print("")
 print("                 mean(all)   mean(active)   p50(active)   p95(active)       max")
-print("raw      /s   \(kb(totalRaw / seconds))  \(kb(activeRaw.isEmpty ? 0 : activeRaw.reduce(0,+) / activeRaw.count))   \(kb(percentile(activeRaw, 0.5)))   \(kb(percentile(activeRaw, 0.95)))   \(kb(rawSeries.max() ?? 0))")
-print("deflate  /s   \(kb(totalDeflate / seconds))  \(kb(activeDef.isEmpty ? 0 : activeDef.reduce(0,+) / activeDef.count))   \(kb(percentile(activeDef, 0.5)))   \(kb(percentile(activeDef, 0.95)))   \(kb(defSeries.max() ?? 0))")
+print(row("raw", totalRaw, rawPerSecond))
+print(row("deflate", totalDeflate, deflatePerSecond))
+print(row("wire", totalWire, wirePerSecond))
 print("")
 let snapRaw = snapshotSizes.map { $0.raw }, snapDef = snapshotSizes.map { $0.deflated }
-print("snapshots: \(snapshotSizes.count) taken every \(snapshotEvery) s")
+print("snapshots: \(snapshotSizes.count) taken every \(snapshotEvery) s (screen only)")
 print("  raw      p50 \(kb(percentile(snapRaw, 0.5)))  p95 \(kb(percentile(snapRaw, 0.95)))  max \(kb(snapRaw.max() ?? 0))")
 print("  deflate  p50 \(kb(percentile(snapDef, 0.5)))  p95 \(kb(percentile(snapDef, 0.95)))  max \(kb(snapDef.max() ?? 0))")
+print("first snapshot with \(historyLines) lines of history at the end: raw \(kb(historySnapshot.count)), deflate \(kb(historySnapshotDeflated))")
 print("")
 print("ratio raw/deflate: \(String(format: "%.1fx", Double(totalRaw) / Double(max(1, totalDeflate))))")

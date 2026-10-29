@@ -7,6 +7,8 @@ let package = Package(
     products: [
         .executable(name: "BlueSteerHost", targets: ["BlueSteerHost"]),
         .executable(name: "bluesteer", targets: ["bluesteer"]),
+        // For tools/term-bench: the headless emulator and snapshot renderer.
+        .library(name: "HostCore", targets: ["HostCore"]),
     ],
     dependencies: [
         .package(path: "../../packages/BlueSteerProtocol"),
