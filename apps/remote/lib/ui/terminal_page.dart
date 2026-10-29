@@ -136,7 +136,8 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
     try {
       await widget.connection.send(e);
     } catch (err) {
-      if (mounted) setState(() => _status = 'send failed: $err');
+      // While the link is down the status already says so; a failure on a live link is news.
+      if (mounted && widget.connection.isConnected) setState(() => _status = 'send failed: $err');
     }
   }
 
@@ -236,10 +237,20 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
 
   /// What Claude is doing, as learned from hooks on the host (SPEC.md §4.1).
   String? get _sessionLabel => switch (_sessionStatus) {
-        SessionStatus.SESSION_STATUS_WAITING_PERMISSION => 'needs permission',
-        SessionStatus.SESSION_STATUS_WAITING_INPUT => 'waiting for input',
+        SessionStatus.SESSION_STATUS_WAITING_PERMISSION => 'Claude needs permission',
+        SessionStatus.SESSION_STATUS_WAITING_INPUT => 'Claude is waiting for input',
+        SessionStatus.SESSION_STATUS_BUSY => 'Claude is working',
         _ => null,
       };
+
+  /// The link and session state in words (read out by screen readers as it changes).
+  String get _statusText {
+    if (_status == 'live') return _sessionLabel ?? 'Connected';
+    if (_status.startsWith('reconnecting')) return 'Reconnecting…';
+    if (_status.startsWith('connecting')) return 'Connecting…';
+    if (_status.startsWith('exited') || _status.startsWith('ended')) return 'Session ended';
+    return _status;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -247,21 +258,26 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
       appBar: AppBar(
         titleSpacing: 0,
         title: Row(children: [
-          Tooltip(
-            message: _status,
-            child: Container(
-              width: 10,
-              height: 10,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(shape: BoxShape.circle, color: _statusColor),
+          ExcludeSemantics(
+            child: Tooltip(
+              message: _statusText,
+              child: Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: _statusColor),
+              ),
             ),
           ),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.hostName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-              Text(_sessionLabel == null ? _cwd : '$_cwd  ·  $_sessionLabel',
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  overflow: TextOverflow.ellipsis),
+              Semantics(
+                liveRegion: true,
+                child: Text('$_statusText  ·  $_cwd',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    overflow: TextOverflow.ellipsis),
+              ),
             ]),
           ),
         ]),
@@ -288,19 +304,21 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
             deleteDetection: true,
           ),
         ),
-        SizedBox(
-          height: 44,
-          child: ListView(scrollDirection: Axis.horizontal, children: [
-            _KeyButton('Esc', _ended ? null : () => _key('\x1b')),
-            _KeyButton('Tab', _ended ? null : () => _key('\t')),
-            _KeyButton('⇧Tab', _ended ? null : () => _key('\x1b[Z')),
-            _KeyButton('^C', _ended ? null : () => _key('\x03')),
-            _KeyButton('^D', _ended ? null : () => _key('\x04')),
-            _KeyButton('↑', _ended ? null : () => _key('\x1b[A')),
-            _KeyButton('↓', _ended ? null : () => _key('\x1b[B')),
-            _KeyButton('←', _ended ? null : () => _key('\x1b[D')),
-            _KeyButton('→', _ended ? null : () => _key('\x1b[C')),
-            _KeyButton('⏎', _ended ? null : () => _key('\r')),
+        // The key bar sizes itself, so large system text is not clipped.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            _KeyButton('Esc', 'Escape', _ended ? null : () => _key('\x1b')),
+            _KeyButton('Tab', 'Tab', _ended ? null : () => _key('\t')),
+            _KeyButton('⇧Tab', 'Shift Tab', _ended ? null : () => _key('\x1b[Z')),
+            _KeyButton('^C', 'Control C', _ended ? null : () => _key('\x03')),
+            _KeyButton('^D', 'Control D', _ended ? null : () => _key('\x04')),
+            _KeyButton('↑', 'Up arrow', _ended ? null : () => _key('\x1b[A')),
+            _KeyButton('↓', 'Down arrow', _ended ? null : () => _key('\x1b[B')),
+            _KeyButton('←', 'Left arrow', _ended ? null : () => _key('\x1b[D')),
+            _KeyButton('→', 'Right arrow', _ended ? null : () => _key('\x1b[C')),
+            _KeyButton('⏎', 'Enter', _ended ? null : () => _key('\r')),
           ]),
         ),
       ]),
@@ -309,13 +327,15 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
 }
 
 class _KeyButton extends StatelessWidget {
-  const _KeyButton(this.label, this.onTap);
+  const _KeyButton(this.label, this.spokenLabel, this.onTap);
   final String label;
+  /// What a screen reader says ("Control C" rather than "caret C").
+  final String spokenLabel;
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: OutlinedButton(onPressed: onTap, child: Text(label)),
+        child: OutlinedButton(onPressed: onTap, child: Text(label, semanticsLabel: spokenLabel)),
       );
 }
 

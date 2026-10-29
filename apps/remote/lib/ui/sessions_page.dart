@@ -110,7 +110,9 @@ class _SessionsPageState extends State<SessionsPage> {
         ValueListenableBuilder<LinkState>(
           valueListenable: widget.connection.state,
           builder: (_, state, _) => state == LinkState.reconnecting
-              ? MaterialBanner(content: Text('Reconnecting to ${widget.hostName}…'), actions: const [SizedBox.shrink()])
+              ? MaterialBanner(
+                  content: Semantics(liveRegion: true, child: Text('Reconnecting to ${widget.hostName}…')),
+                  actions: const [SizedBox.shrink()])
               : const SizedBox.shrink(),
         ),
         Expanded(child: list.isEmpty

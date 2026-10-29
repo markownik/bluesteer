@@ -12,7 +12,7 @@ const appVersion = '0.1.0';
 /// This device's Noise static key, its name, and the hosts it has paired
 /// with, kept in the platform secure storage (Keychain / Keystore).
 class Identity {
-  Identity._(this.keyPair, this._storage, this.hosts, this._deviceName);
+  Identity._(this.keyPair, this._storage, this.hosts, this._deviceName, [this._ephemeral = false]);
 
   static const _keyField = 'remote_static_key';
   static const _hostsField = 'paired_hosts';
@@ -22,6 +22,7 @@ class Identity {
   final FlutterSecureStorage _storage;
   final List<PairedHost> hosts;
   String _deviceName;
+  final bool _ephemeral;
 
   /// Shown by the host for this device ("Marek's iPhone"); sent in `RemoteHello`.
   String get deviceName => _deviceName;
@@ -29,7 +30,7 @@ class Identity {
   /// An identity that touches no storage (tests).
   @visibleForTesting
   Identity.inMemory({required NoiseKeyPair keyPair, String deviceName = 'test', List<PairedHost>? hosts})
-      : this._(keyPair, const FlutterSecureStorage(), hosts ?? [], deviceName);
+      : this._(keyPair, const FlutterSecureStorage(), hosts ?? [], deviceName, true);
 
   static Future<Identity> load([FlutterSecureStorage? storage]) async {
     final s = storage ?? const FlutterSecureStorage();
@@ -63,7 +64,7 @@ class Identity {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
     _deviceName = trimmed;
-    await _storage.write(key: _nameField, value: trimmed);
+    if (!_ephemeral) await _storage.write(key: _nameField, value: trimmed);
   }
 
   /// Adds a host, or replaces the entry with the same id in place.
@@ -82,7 +83,10 @@ class Identity {
     await _save();
   }
 
-  Future<void> _save() => _storage.write(key: _hostsField, value: jsonEncode(hosts.map((h) => h.toJson()).toList()));
+  Future<void> _save() async {
+    if (_ephemeral) return;
+    await _storage.write(key: _hostsField, value: jsonEncode(hosts.map((h) => h.toJson()).toList()));
+  }
 }
 
 class PairedHost {

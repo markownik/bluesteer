@@ -27,7 +27,7 @@ class _HostsPageState extends State<HostsPage> {
   void initState() {
     super.initState();
     // bluesteer://pair?... links (QR alternative) open the pairing page directly.
-    _links = AppLinks().uriLinkStream.listen((uri) => _pair(uri.toString()));
+    _links = AppLinks().uriLinkStream.listen((uri) => _pair(uri.toString()), onError: (_) {});
   }
 
   @override
@@ -80,6 +80,25 @@ class _HostsPageState extends State<HostsPage> {
     }
   }
 
+  /// Long press on a Mac: confirm before forgetting it (it must pair again).
+  Future<void> _forget(PairedHost host) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Forget ${host.name}?'),
+        content: const Text('This Mac will have to pair again before you can connect to it.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Forget')),
+        ],
+      ),
+    );
+    if (yes == true) {
+      await widget.identity.removeHost(host.id);
+      if (mounted) setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final hosts = widget.identity.hosts;
@@ -87,6 +106,7 @@ class _HostsPageState extends State<HostsPage> {
       appBar: AppBar(title: const Text('BlueSteer'), actions: [
         IconButton(
           icon: const Icon(Icons.settings),
+          tooltip: 'Settings',
           onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(identity: widget.identity))),
         ),
       ]),
@@ -100,14 +120,11 @@ class _HostsPageState extends State<HostsPage> {
                     title: Text(h.name),
                     subtitle: Text(_status[h.id] ?? 'Tap to connect'),
                     onTap: () => _connect(h),
-                    onLongPress: () async {
-                      await widget.identity.removeHost(h.id);
-                      setState(() {});
-                    },
+                    onLongPress: () => _forget(h),
                   ),
               ],
             ),
-      floatingActionButton: FloatingActionButton(onPressed: _pair, child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(onPressed: _pair, tooltip: 'Pair with a Mac', child: const Icon(Icons.add)),
     );
   }
 }

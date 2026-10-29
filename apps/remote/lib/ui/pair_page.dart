@@ -232,7 +232,7 @@ class _PairPageState extends State<PairPage> {
         Expanded(
           flex: 3,
           child: working
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator(semanticsLabel: 'Pairing'))
               : Stack(alignment: Alignment.bottomCenter, children: [
                   MobileScanner(
                     controller: _scanner,
@@ -247,7 +247,8 @@ class _PairPageState extends State<PairPage> {
                   ),
                 ]),
         ),
-        if (_status.isNotEmpty) Padding(padding: const EdgeInsets.all(12), child: Text(_status, textAlign: TextAlign.center)),
+        if (_status.isNotEmpty)
+          Padding(padding: const EdgeInsets.all(12), child: Semantics(liveRegion: true, child: Text(_status, textAlign: TextAlign.center))),
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Align(alignment: Alignment.centerLeft, child: Text('Or pick a nearby Mac and compare a code', style: TextStyle(fontWeight: FontWeight.bold))),
