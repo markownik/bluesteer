@@ -8,9 +8,11 @@ Status: Phases 0–4 of `docs/PLAN.md` work end to end on macOS + Android + iOS:
 
 ## Get it
 
-- **BlueSteer Host** (macOS, menu bar): a signed and notarized build will be sold as a one-time purchase with free updates (link to follow); everything needed to build it yourself is below and in this repository.
+- **BlueSteer Host** (macOS 14+, menu bar): a signed and notarized build is sold as a one-time purchase with free updates within version 1 (checkout opens with 1.0; see https://bluesteer.devland.app). Everything needed to build it yourself is below.
 - **BlueSteer Remote** (iPhone, Android): free on the App Store and Google Play once published; buildable from this repository too.
 - **Another Mac as the remote:** the `bluesteer` command line tool that ships inside the host app.
+
+Website https://bluesteer.devland.app · [get started and support](https://bluesteer.devland.app/support) · [security overview](https://bluesteer.devland.app/security) · [privacy](https://bluesteer.devland.app/privacy) · [terms](https://bluesteer.devland.app/terms) · support@devland.app
 
 ## Build from source
 
@@ -24,7 +26,7 @@ Prerequisites:
 ### Host (the Mac you want to steer)
 
 ```bash
-git clone https://github.com/<owner>/bluesteer && cd bluesteer
+git clone https://github.com/markownik/bluesteer && cd bluesteer
 tools/bundle-app.sh              # builds build/BlueSteer.app (release, ad-hoc signed)
 open build/BlueSteer.app         # menu-bar icon; macOS asks for Bluetooth once
 ```
@@ -63,9 +65,15 @@ bluesteer pair                   # nearby Macs → compare the code; or: blueste
 bluesteer connect                # attach this terminal; Ctrl-] detaches
 ```
 
-### First run
+### Get started
 
-On the Mac open **Pair a remote…** in the menu. On the phone tap **+**, then either scan the QR code or pick the Mac from the nearby list and confirm that both screens show the same 6-digit code. Tap the Mac: a terminal opens. "New terminal" starts another shell; exited ones disappear from the list. **Install Claude Code hooks…** in the Mac's menu lets the phone show when Claude is waiting for input or for permission; **Disconnect all** drops every remote and stops accepting connections until you choose **Accept remotes again**.
+The same steps, in the apps' own words, are at https://bluesteer.devland.app/support.
+
+1. **On the Mac** open BlueSteer and choose **Pair a remote…** from the menu. A QR code appears, valid for 2 minutes or until a remote pairs.
+2. **On the phone** tap **+**. Scan the QR code, or pick your Mac from the nearby list (**Tap to pair by code**); both screens then show the same 6-digit code: tap **It matches** on the phone and **Pair** on the Mac.
+3. **Tap the Mac** in the list: a terminal opens (your login shell, on the Mac). Type `claude`. The key bar has Esc, Tab, ⇧Tab, ^C, ^D, ↑ ↓ ← → and ⏎. **New terminal** starts another shell; exited ones disappear from the list.
+4. Optional: **Install Claude Code hooks…** in the Mac's menu shows on the phone when Claude is working, waiting for input or waiting for permission. **Unlock before connecting** in the phone's Settings asks for Face ID, fingerprint or the passcode each time a Mac is opened. **Disconnect all** drops every remote and stops accepting connections until you choose **Accept remotes again**; **Paired remotes** → **Revoke** removes a device, **Forget** (press and hold) does the same on the phone.
+5. A terminal you started yourself is shared with `bluesteer run claude`; another Mac attaches with `bluesteer pair` and `bluesteer connect`.
 
 ### Tests
 
