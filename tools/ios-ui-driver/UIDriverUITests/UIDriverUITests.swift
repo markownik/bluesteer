@@ -6,7 +6,7 @@ import XCTest
 /// Mac (see driver.sh). Runs under XCTest because only XCUITest may synthesize
 /// touches and keystrokes on a device.
 final class UIDriverUITests: XCTestCase {
-    static let bundleID = "dev.bluesteer.bluesteerRemote"
+    static let bundleID = "app.devland.bluesteer.client.ios"
     static let port: UInt16 = 8099
     static let maxUptime: TimeInterval = 2 * 60 * 60
 

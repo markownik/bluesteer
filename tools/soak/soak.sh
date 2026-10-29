@@ -34,7 +34,7 @@ HOST_PID=$(pgrep -x BlueSteerHost | head -1)
 RUN="$here/runs/$(date +%Y%m%d-%H%M)"
 mkdir -p "$RUN/android" "$RUN/ios"
 AUDIT="$HOME/Library/Application Support/BlueSteer/audit.log"
-APP=dev.bluesteer.bluesteer_remote
+APP=app.devland.bluesteer.client.android
 now() { date +%s; }
 event() { printf '%s\t%s\t%s\n' "$(now)" "$1" "${2:-}" >> "$RUN/events.tsv"; echo "$(date +%T) $1 ${2:-}"; }
 shot() {

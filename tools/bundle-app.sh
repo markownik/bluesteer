@@ -7,6 +7,9 @@ cd "$(dirname "$0")/../apps/host"
 
 IDENTITY="-"   # ad-hoc by default
 if [[ "${1:-}" == "--sign" ]]; then IDENTITY="$2"; fi
+# Notarization needs a secure timestamp; an ad-hoc signature cannot carry one.
+TIMESTAMP=--timestamp=none
+if [[ "$IDENTITY" != "-" ]]; then TIMESTAMP=--timestamp; fi
 
 swift build -c release --product BlueSteerHost
 swift build -c release --product bluesteer
@@ -26,7 +29,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>BlueSteer</string>
   <key>CFBundleDisplayName</key><string>BlueSteer</string>
-  <key>CFBundleIdentifier</key><string>dev.bluesteer.host</string>
+  <key>CFBundleIdentifier</key><string>app.devland.bluesteer.host.macos</string>
   <key>CFBundleExecutable</key><string>BlueSteerHost</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -48,8 +51,8 @@ cat > "$ENTITLEMENTS" <<PLIST
   <key>com.apple.security.device.bluetooth</key><true/>
 </dict></plist>
 PLIST
-codesign --force --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP/Contents/MacOS/bluesteer"
-codesign --force --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
+codesign --force --options runtime "$TIMESTAMP" --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP/Contents/MacOS/bluesteer"
+codesign --force --options runtime "$TIMESTAMP" --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
 rm -f "$ENTITLEMENTS"
 codesign --verify --strict --deep "$APP"
 echo "built $APP (signed: $IDENTITY)"
