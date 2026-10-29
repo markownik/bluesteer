@@ -11,7 +11,7 @@
 import 'dart:io';
 
 import 'package:bluesteer_remote/main.dart' as app;
-import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -58,8 +58,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
     }
     expect(find.textContaining('Claude needs permission'), findsOneWidget);
-    FocusManager.instance.primaryFocus?.unfocus(); // no software keyboard in the capture
-    await tester.pumpAndSettle();
+    // The terminal has focus; ask for the software keyboard explicitly (Android shows it late otherwise).
+    await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    await tester.pump(const Duration(milliseconds: 1500)); // the keyboard slides in
     await shot('03-terminal');
 
     // 4. Pairing: the nearby list.

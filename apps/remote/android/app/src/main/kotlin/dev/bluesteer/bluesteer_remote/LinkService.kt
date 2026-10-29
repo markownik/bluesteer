@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 
 /// Keeps the process (and so the BLE link) alive while the app is in the
 /// background: a `connectedDevice` foreground service with the persistent
@@ -37,10 +38,19 @@ class LinkService : Service() {
             .setContentIntent(open)
             .setOngoing(true)
             .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            // Android 14+ refuses a connectedDevice service when the Bluetooth permission was
+            // revoked (SecurityException) or the app may not start one right now
+            // (ForegroundServiceStartNotAllowedException). The link still works in the
+            // foreground; without the service it just drops when the app is backgrounded.
+            Log.w("BlueSteer", "foreground service refused: $e")
+            stopSelf()
         }
         return START_NOT_STICKY
     }

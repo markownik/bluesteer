@@ -31,8 +31,26 @@ drive() { # drive <ios|android> <device id>: the test asks shot-server.py for a 
 ios() {
   local udid
   udid=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r in d.values() for x in r if x['name']=='$SIM_NAME'))")
+  # The software keyboard only appears while Simulator.app has the device open with no hardware
+  # keyboard attached, and Simulator.app must not mirror the Mac's input source (I/O → Keyboard →
+  # "Use the Same Keyboard Language as macOS"): both are Simulator.app defaults, read at attach time.
+  defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+  defaults write com.apple.iphonesimulator EnableKeyboardSync -bool false
+  osascript -e 'quit app "Simulator"' 2>/dev/null || true
+  xcrun simctl shutdown "$udid" 2>/dev/null || true
+  # English UI and keyboard regardless of the Mac's locale. The device's preference daemon
+  # overwrites the plist files on shutdown, so write through the booted device, then flush.
   xcrun simctl boot "$udid" 2>/dev/null || true
   xcrun simctl bootstatus "$udid" -b
+  xcrun simctl spawn "$udid" defaults write .GlobalPreferences AppleLanguages -array en-US
+  xcrun simctl spawn "$udid" defaults write .GlobalPreferences AppleLocale -string en_US
+  xcrun simctl spawn "$udid" defaults write .GlobalPreferences AppleKeyboards -array "en_US@sw=QWERTY;hw=Automatic" "emoji@sw=Emoji"
+  xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences KeyboardLastUsed -string "en_US@sw=QWERTY;hw=Automatic"
+  xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences KeyboardLastUsedForLanguage -dict ASCIICapable "en_US@sw=QWERTY;hw=Automatic" en_US "en_US@sw=QWERTY;hw=Automatic"
+  xcrun simctl shutdown "$udid"
+  xcrun simctl boot "$udid" 2>/dev/null || true
+  xcrun simctl bootstatus "$udid" -b
+  open -a Simulator --args -CurrentDeviceUDID "$udid"
   xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 --operatorName ""
   drive ios "$udid"
   xcrun simctl status_bar "$udid" clear
@@ -52,6 +70,12 @@ android() {
   adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4 >/dev/null
   adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
   adb -s "$serial" reverse "tcp:$PORT" "tcp:$PORT"
+  # The demo never asks for Bluetooth, but the connectedDevice foreground service needs the
+  # permission granted; grant it on the installed package (flutter drive reinstalls with -r, which keeps grants).
+  (cd "$APP" && flutter build apk --debug >/dev/null && adb -s "$serial" install -r build/app/outputs/flutter-apk/app-debug.apk >/dev/null)
+  for perm in BLUETOOTH_CONNECT BLUETOOTH_SCAN POST_NOTIFICATIONS; do
+    adb -s "$serial" shell pm grant app.devland.bluesteer.client.android "android.permission.$perm" 2>/dev/null || true
+  done
   drive android "$serial" || { adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null; exit 1; }
   adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null
   rm -rf "$OUT/android" && mkdir -p "$OUT/android/play"
