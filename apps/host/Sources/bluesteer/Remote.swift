@@ -45,8 +45,8 @@ struct PairingLink {
     }
 }
 
-/// Scans until a host with `id` answers, connecting to each candidate in turn.
-func findHost(_ link: CentralLink, id: String, timeout: TimeInterval = 20) -> ConnectedHostInfo {
+/// Scans until a host with `id` answers, connecting to each candidate in turn; nil after `timeout`.
+func findHost(_ link: CentralLink, id: String, timeout: TimeInterval = 20) -> ConnectedHostInfo? {
     let info: ConnectedHostInfo? = block(timeout) { done in
         var tried = Set<UUID>()
         var busy = false
@@ -55,23 +55,28 @@ func findHost(_ link: CentralLink, id: String, timeout: TimeInterval = 20) -> Co
             guard !busy, let p = waiting.first else { return }
             waiting.removeFirst()
             busy = true
+            RemoteSession.log("connecting to \(p.identifier)")
             link.connect(p) { result in
                 busy = false
                 if case .success(let info) = result, info.id == id { link.stopScan(); done(info); return }
+                RemoteSession.log("\(p.identifier): \((try? result.get()).map { "is \($0.name), not the Mac we want" } ?? "connect failed")")
                 link.close()
                 tryNext()
             }
         }
         link.onDiscovered = { host in
             guard tried.insert(host.peripheral.identifier).inserted else { return }
+            RemoteSession.log("discovered \(host.peripheral.identifier) (\(host.name))")
             waiting.append(host.peripheral)
             tryNext()
         }
         link.startScan()
     }
-    guard let info else { fail("no Mac with that id is in range (is BlueSteer running there?)") }
+    if info == nil { remoteQueue.sync { link.stopScan() } }
     return info
 }
+
+let notInRange = "no Mac with that id is in range (is BlueSteer running there?)"
 
 func cmdPair(_ args: [String]) -> Int32 {
     let store = try! RemoteStore()
@@ -79,7 +84,7 @@ func cmdPair(_ args: [String]) -> Int32 {
     if let text = args.first {
         guard let pairing = PairingLink(text) else { fail("that is not a BlueSteer pairing link") }
         print("Looking for \(pairing.name)…")
-        let info = findHost(link, id: pairing.id)
+        guard let info = findHost(link, id: pairing.id) else { fail(notInRange) }
         let session = try! RemoteSession(transport: link, identity: store.keyPair, deviceName: store.deviceName, mode: .psk(pairing.psk), queue: remoteQueue)
         let ready: Result<Void, Error>? = block(20) { done in
             session.onReady = { done(.success(())) }
@@ -101,15 +106,25 @@ func cmdPair(_ args: [String]) -> Int32 {
     var found: [DiscoveredHost] = []
     _ = block(4) { (done: @escaping (Bool) -> Void) in
         link.onDiscovered = { host in
-            if !found.contains(where: { $0.peripheral.identifier == host.peripheral.identifier }) {
-                found.append(host)
-                print("  [\(found.count)] \(host.name)")
-            }
+            if !found.contains(where: { $0.peripheral.identifier == host.peripheral.identifier }) { found.append(host) }
         }
         link.startScan()
     }
     remoteQueue.sync { link.stopScan() }
     guard !found.isEmpty else { fail("no Mac running BlueSteer is in range") }
+    // A Mac advertises no local name next to the service UUID and a Mac central caches
+    // none either (the scan result carries only the peripheral id), so each candidate's
+    // Computer Name is read from its INFO characteristic, as the phones do.
+    for (i, host) in found.enumerated() {
+        let connected: Result<ConnectedHostInfo, Error>? = block(15) { done in link.connect(host.peripheral) { done($0) } }
+        if case .success(let info)? = connected {
+            print("  [\(i + 1)] \(info.name)")
+            _ = block(3) { (done: @escaping (Bool) -> Void) in link.onClosed = { done(true) }; link.close() }
+            link.onClosed = nil
+        } else {
+            print("  [\(i + 1)] \(host.name)  (did not answer)")
+        }
+    }
     var choice = 1
     if found.count > 1 {
         print("Pair with [1-\(found.count)]: ", terminator: "")
@@ -174,8 +189,14 @@ func cmdConnect(_ args: [String]) -> Int32 {
     var attempt = 0
     while true {
         let link = newLink()
-        if attempt == 0 { print("Looking for \(host.name)…") }
-        let info = findHost(link, id: host.id, timeout: attempt == 0 ? 20 : 15)
+        if attempt == 0 { print("Looking for \(host.name)…") } else { RemoteSession.log("attempt \(attempt): scanning") }
+        guard let info = findHost(link, id: host.id, timeout: attempt == 0 ? 20 : 15) else {
+            // The Mac's radio or the host may take a while to come back: keep scanning.
+            if attempt == 0 { fail(notInRange) }
+            RemoteSession.log("attempt \(attempt): not found")
+            if attempt >= backoff.count { fail("could not reach \(host.name)") }
+            sleep(UInt32(backoff[min(attempt, backoff.count - 1)])); attempt += 1; continue
+        }
         let session = try! RemoteSession(transport: link, identity: store.keyPair, deviceName: store.deviceName, mode: .paired(hostKey: host.hostKey), queue: remoteQueue)
         let ready: Result<Void, Error>? = block(20) { done in
             session.onReady = { done(.success(())) }
@@ -183,6 +204,7 @@ func cmdConnect(_ args: [String]) -> Int32 {
             try? session.start()
         }
         guard case .success? = ready else {
+            RemoteSession.log("attempt \(attempt): handshake \(ready == nil ? "timed out" : "failed")")
             if case .failure(let e)? = ready { fputs("bluesteer: \(e.localizedDescription)\n", stderr) }
             if attempt >= backoff.count { fail("could not reach \(host.name)") }
             sleep(UInt32(backoff[min(attempt, backoff.count - 1)])); attempt += 1; continue
@@ -192,9 +214,8 @@ func cmdConnect(_ args: [String]) -> Int32 {
         }
         guard let sid = sessionID else { fail("no session") }
         terminal.enterRaw()
-        let outcome: TerminalAttach.Outcome? = block(.infinity) { done in
-            TerminalAttach(session: session, sessionID: sid).run(completion: done)
-        }
+        let attach = TerminalAttach(session: session, sessionID: sid) // held here: its handlers only weakly reference it
+        let outcome: TerminalAttach.Outcome? = block(.infinity) { done in attach.run(completion: done) }
         terminal.restore()
         switch outcome {
         case .detached?:

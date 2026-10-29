@@ -22,10 +22,12 @@ public struct ConnectedHostInfo {
 /// the queue passed in; call the methods from that queue too.
 public final class CentralLink: NSObject, RemoteTransport {
     public enum Error: Swift.Error, LocalizedError {
-        case bluetoothOff, noService, disconnected(String?)
+        case bluetoothOff, unauthorized, unsupported, noService, disconnected(String?)
         public var errorDescription: String? {
             switch self {
             case .bluetoothOff: "Bluetooth is off"
+            case .unauthorized: "this program is not allowed to use Bluetooth (run it from a terminal app with Bluetooth access in System Settings > Privacy & Security > Bluetooth; an ssh session has none)"
+            case .unsupported: "this Mac has no Bluetooth LE"
             case .noService: "the device has no BlueSteer service"
             case .disconnected(let why): "disconnected" + (why.map { ": \($0)" } ?? "")
             }
@@ -101,7 +103,9 @@ extension CentralLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let ready else { return }
         switch central.state {
         case .poweredOn: self.ready = nil; ready(nil)
-        case .poweredOff, .unauthorized, .unsupported: self.ready = nil; ready(Error.bluetoothOff)
+        case .poweredOff: self.ready = nil; ready(Error.bluetoothOff)
+        case .unauthorized: self.ready = nil; ready(Error.unauthorized)
+        case .unsupported: self.ready = nil; ready(Error.unsupported)
         default: break
         }
     }

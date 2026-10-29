@@ -46,7 +46,7 @@ Remotes reconnect by themselves after a Bluetooth drop: they scan for the Mac ag
 
 ## Console remote
 
-`bluesteer pair` (nearby Macs, code comparison, or a pasted `bluesteer://pair` link), `bluesteer hosts` and `bluesteer connect [name] [--new]` make another Mac a remote: the terminal you run it in attaches to a session on the host, keystrokes and resizes go through, Ctrl-] detaches, and a dropped link reconnects. State lives in `~/Library/Application Support/BlueSteer/remote.json`.
+`bluesteer pair` (nearby Macs, code comparison, or a pasted `bluesteer://pair` link), `bluesteer hosts` and `bluesteer connect [name] [--new]` make another Mac a remote: the terminal you run it in attaches to a session on the host, keystrokes and resizes go through, Ctrl-] detaches, and a dropped link reconnects. State lives in `~/Library/Application Support/BlueSteer/remote.json`. The nearby list reads each Mac's name from `INFO` (a Mac central sees no name in the advertisement at all). Run it from a terminal app: a process started over ssh gets no Bluetooth permission prompt and CoreBluetooth reports it as unauthorized. `BLUESTEER_DEBUG=1` prints link traffic on stderr.
 
 ## Audit log and login item
 

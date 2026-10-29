@@ -93,7 +93,12 @@ public final class RemoteSession {
 
     public func close() { transport.close() }
 
+    /// `BLUESTEER_DEBUG=1` prints link traffic on stderr (the host does the same by default).
+    public static let debug = ProcessInfo.processInfo.environment["BLUESTEER_DEBUG"] != nil
+    public static func log(_ text: @autoclosure () -> String) { if debug { fputs("[remote] \(text())\n", stderr) } }
+
     private func received(_ data: Data) {
+        Self.log("link delivered \(data.count) bytes")
         do {
             for event in try channel.receive(data) {
                 switch event {
@@ -113,6 +118,7 @@ public final class RemoteSession {
                     }
                 case .message(let plaintext):
                     let envelope = try BSEnvelope(serializedBytes: plaintext)
+                    Self.log("received \(envelope.body.map { String(describing: $0).prefix(40) } ?? "empty") (\(plaintext.count) bytes)")
                     if hostHello == nil {
                         if case .hostHello(let hello) = envelope.body {
                             guard hello.protocolVersion == protocolVersion else { throw Error.protocolMismatch(hello.protocolVersion) }
@@ -128,6 +134,7 @@ public final class RemoteSession {
                 }
             }
         } catch {
+            Self.log("error: \(error)")
             onError?(error)
         }
     }

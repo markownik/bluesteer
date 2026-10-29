@@ -39,7 +39,8 @@ public final class TerminalAttach {
     }
 
     /// Subscribes and runs until detach, exit or link loss. Call on the session's queue;
-    /// `completion` runs there too. The terminal must already be in raw mode.
+    /// `completion` runs there too. The terminal must already be in raw mode. Keep the
+    /// instance alive until `completion`: the session and stdin only hold it weakly.
     public func run(completion: @escaping (Outcome) -> Void) {
         finished = completion
         session.onEnvelope = { [weak self] e in self?.handle(e) }
@@ -102,6 +103,7 @@ public final class TerminalAttach {
             var vt = snap.compressed ? InflateStream.inflateAll(snap.vt) : snap.vt
             // Keep this terminal's own history: the host's "erase scrollback" is for emulators we own.
             vt = Data(String(decoding: vt, as: UTF8.self).replacingOccurrences(of: "\u{1b}[3J", with: "").utf8)
+            RemoteSession.log("snapshot seq \(snap.seq), \(snap.vt.count) bytes on the wire, \(vt.count) bytes of VT")
             RawTerminal.writeAll(STDOUT_FILENO, vt)
             lastSeq = snap.seq
             resyncing = false
