@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bluesteer_protocol_dart/bluesteer_protocol_dart.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Version reported in `RemoteHello`.
@@ -24,6 +25,11 @@ class Identity {
 
   /// Shown by the host for this device ("Marek's iPhone"); sent in `RemoteHello`.
   String get deviceName => _deviceName;
+
+  /// An identity that touches no storage (tests).
+  @visibleForTesting
+  Identity.inMemory({required NoiseKeyPair keyPair, String deviceName = 'test', List<PairedHost>? hosts})
+      : this._(keyPair, const FlutterSecureStorage(), hosts ?? [], deviceName);
 
   static Future<Identity> load([FlutterSecureStorage? storage]) async {
     final s = storage ?? const FlutterSecureStorage();
@@ -60,9 +66,14 @@ class Identity {
     await _storage.write(key: _nameField, value: trimmed);
   }
 
+  /// Adds a host, or replaces the entry with the same id in place.
   Future<void> addHost(PairedHost host) async {
-    hosts.removeWhere((h) => h.id == host.id);
-    hosts.add(host);
+    final i = hosts.indexWhere((h) => h.id == host.id);
+    if (i >= 0) {
+      hosts[i] = host;
+    } else {
+      hosts.add(host);
+    }
     await _save();
   }
 

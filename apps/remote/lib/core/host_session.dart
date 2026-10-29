@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:bluesteer_protocol_dart/bluesteer_protocol_dart.dart';
 import 'package:fixnum/fixnum.dart';
+import 'package:flutter/foundation.dart';
 
-import '../ble/host_link.dart';
 import 'identity.dart';
+import 'link.dart';
 
 /// Handshake selector byte (SPEC.md §2.0).
 enum PairingMode {
@@ -32,11 +32,15 @@ class PendingPairing {
   }
 }
 
-/// An authenticated, encrypted session with one host over a [HostLink].
+/// An authenticated, encrypted session with one host over a [Link].
 class HostSession {
   HostSession._(this.link, this._channel);
 
-  final HostLink link;
+  /// Three Noise round trips at ~50 ms each need well under a second; this
+  /// also bounds how long a link the host silently dropped keeps us waiting.
+  static const handshakeTimeout = Duration(seconds: 8);
+
+  final Link link;
   final SecureChannel _channel;
   final _envelopes = StreamController<Envelope>.broadcast();
   final _pendingPongs = <int, Completer<void>>{};
@@ -50,12 +54,12 @@ class HostSession {
   /// the QR code; for [PairingMode.paired] the pinned host key. Returns once the
   /// host sent its `HostHello`. Use [pairByCode] for [PairingMode.code].
   static Future<HostSession> establish(
-    HostLink link, {
+    Link link, {
     required Identity identity,
     required PairingMode mode,
     List<int>? pairingPsk,
     List<int>? pinnedHostKey,
-    Duration timeout = const Duration(seconds: 15),
+    Duration timeout = handshakeTimeout,
   }) async {
     final session = await _handshake(link, identity: identity, mode: mode, pairingPsk: pairingPsk, pinnedHostKey: pinnedHostKey, timeout: timeout);
     await session._hello.future.timeout(timeout);
@@ -63,13 +67,13 @@ class HostSession {
   }
 
   /// Handshake for pairing by code; the caller shows [PendingPairing.code].
-  static Future<PendingPairing> pairByCode(HostLink link, {required Identity identity}) async {
-    final session = await _handshake(link, identity: identity, mode: PairingMode.code, timeout: const Duration(seconds: 15));
+  static Future<PendingPairing> pairByCode(Link link, {required Identity identity}) async {
+    final session = await _handshake(link, identity: identity, mode: PairingMode.code, timeout: handshakeTimeout);
     return PendingPairing._(session, await SecureChannel.pairingCode(session._channel.handshakeHash!));
   }
 
   static Future<HostSession> _handshake(
-    HostLink link, {
+    Link link, {
     required Identity identity,
     required PairingMode mode,
     List<int>? pairingPsk,
@@ -102,6 +106,7 @@ class HostSession {
       session._envelopes.close();
     });
     await link.write([mode.selector, ...await channel.start()]);
+    debugPrint('[link] handshake sent');
     try {
       await established.future.timeout(timeout);
     } catch (_) {

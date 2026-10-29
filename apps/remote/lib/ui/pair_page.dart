@@ -31,6 +31,10 @@ class _PairPageState extends State<PairPage> {
   final _scanner = MobileScannerController(autoStart: false);
   StreamSubscription<BleDevice>? _scan;
   final _nearby = <String, BleDevice>{};
+  /// Names read from INFO, by device id: phones only see a Mac's cached
+  /// system name ("Mac") in scan results, so each nearby Mac is asked once.
+  final _names = <String, String>{};
+  final _resolving = <String>{};
   final _tried = <String>{};
   bool _busy = false;
 
@@ -56,10 +60,42 @@ class _PairPageState extends State<PairPage> {
 
   Future<void> _startScan() async {
     await UniversalBle.requestPermissions();
+    _scan?.cancel();
     _scan = HostLink.scan().listen((device) {
-      if (!_nearby.containsKey(device.deviceId)) setState(() => _nearby[device.deviceId] = device);
-      if (_pairing != null) _tryForQr(device);
+      // The first result for a Mac may carry only a cached system name ("Mac");
+      // a later one with the advertised `BlueSteer <name>` replaces it.
+      final known = _nearby[device.deviceId];
+      if (known == null || (HostLink.hasAdvertisedName(device) && !HostLink.hasAdvertisedName(known))) {
+        setState(() => _nearby[device.deviceId] = device);
+      }
+      if (_pairing != null) {
+        _tryForQr(device);
+      } else if (!HostLink.hasAdvertisedName(device)) {
+        _resolveName(device);
+      }
+    }, onError: (Object e) {
+      if (mounted) setState(() => _status = 'Bluetooth scan failed: $e');
     });
+  }
+
+  String _nameOf(BleDevice d) => _names[d.deviceId] ?? HostLink.advertisedName(d);
+
+  /// Reads the Mac's name from INFO (no link is opened by a read), then scans on.
+  Future<void> _resolveName(BleDevice device) async {
+    if (_busy || _names.containsKey(device.deviceId) || !_resolving.add(device.deviceId)) return;
+    _busy = true;
+    try {
+      await UniversalBle.stopScan();
+      final link = await HostLink.connect(device);
+      final name = link.info.name;
+      await link.close();
+      if (mounted) setState(() => _names[device.deviceId] = name);
+    } catch (_) {
+      _resolving.remove(device.deviceId); // a later result tries again
+    } finally {
+      _busy = false;
+      if (mounted && _pairing == null) _startScan();
+    }
   }
 
   // --- QR code / link -------------------------------------------------------
@@ -94,7 +130,7 @@ class _PairPageState extends State<PairPage> {
 
   Future<void> _pairWithPsk(BleDevice device) async {
     final pairing = _pairing!;
-    setState(() => _status = 'Checking ${HostLink.advertisedName(device)}…');
+    setState(() => _status = 'Checking ${_nameOf(device)}…');
     HostLink? link;
     try {
       link = await HostLink.connect(device);
@@ -125,7 +161,7 @@ class _PairPageState extends State<PairPage> {
   Future<void> _pairByCode(BleDevice device) async {
     if (_busy) return;
     _busy = true;
-    final name = HostLink.advertisedName(device);
+    final name = _nameOf(device);
     setState(() => _status = 'Connecting to $name…');
     _scanner.stop();
     await UniversalBle.stopScan();
@@ -224,8 +260,8 @@ class _PairPageState extends State<PairPage> {
                   for (final d in _nearby.values)
                     ListTile(
                       leading: const Icon(Icons.laptop_mac),
-                      title: Text(HostLink.advertisedName(d)),
-                      subtitle: const Text('Tap to pair by code'),
+                      title: Text(_nameOf(d)),
+                      subtitle: Text(_names.containsKey(d.deviceId) || HostLink.hasAdvertisedName(d) ? 'Tap to pair by code' : 'Asking for its name…'),
                       enabled: !working,
                       onTap: () => _pairByCode(d),
                     ),

@@ -22,7 +22,7 @@ This document is the normative description of how a BlueSteer Remote talks to a 
 
 `STATUS` value: one flags byte. Bit 0 is set while the host's pairing window is open (it accepts new remotes, §2.1). A remote reads it before offering to pair by code, so it can tell the user to open "Pair a remote…" on the Mac instead of timing out.
 
-Advertising data carries the service UUID; the scan response carries the local name `BlueSteer <hostname>`.
+Advertising data carries the service UUID and, where the stack has room for it, the local name `BlueSteer <name>`. In practice a macOS peripheral advertising a 128-bit service UUID delivers no local name to Android or iOS centrals (measured 2026-10-29: every scan result carried only the cached GAP name "Mac"), so a remote must not rely on it: before pairing it reads `INFO` from each nearby host to show its real name (a read opens no link), and after every connection it refreshes the stored name from `HostHello.host_name`. The name in `INFO` and `HostHello` is the Mac's Computer Name.
 
 ### 1.2 Chunking
 

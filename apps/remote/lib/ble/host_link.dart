@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
+
+import '../core/link.dart';
 
 /// GATT details from SPEC.md §1.1.
 const bluesteerServiceUuid = '7b5e5a6e-0001-4b1e-9c0e-5a2d2e1f0001';
@@ -21,13 +23,18 @@ class HostInfo {
 
   String get id => base64Url.encode(instanceId).replaceAll('=', '');
 
-  static HostInfo parse(Uint8List v) =>
-      HostInfo(v[0], Uint8List.sublistView(v, 1, 17), utf8.decode(v.sublist(17), allowMalformed: true));
+  static HostInfo parse(Uint8List v) {
+    if (v.length < 17) throw FormatException('INFO is ${v.length} bytes');
+    return HostInfo(v[0], Uint8List.sublistView(v, 1, 17), utf8.decode(v.sublist(17), allowMalformed: true));
+  }
 }
 
 /// One BLE connection to a host: an ordered byte stream each way.
-class HostLink {
-  HostLink._(this.device, this.info, this._status, this._rx, this._chunkSize, this._incoming);
+class HostLink implements Link {
+  HostLink._(this.device, this.info, this._status, this._rx, this._chunkSize, this._incoming, this._txSub);
+
+  /// How long a connect (plus MTU, discovery, INFO and subscribe) may take.
+  static const connectTimeout = Duration(seconds: 5);
 
   final BleDevice device;
   final HostInfo info;
@@ -35,25 +42,69 @@ class HostLink {
   final BleCharacteristic _rx;
   final int _chunkSize;
   final StreamController<Uint8List> _incoming;
+  final StreamSubscription<Uint8List> _txSub;
+  StreamSubscription<bool>? _connSub;
   Future<void> _writeQueue = Future.value();
+  bool _dead = false;
 
+  @override
   Stream<Uint8List> get incoming => _incoming.stream;
-  Stream<bool> get connectionState => device.connectionStream;
 
-  /// Scans for BlueSteer hosts. Stop with [UniversalBle.stopScan].
+  /// Scans for BlueSteer hosts; a scan that cannot start is an error on the
+  /// stream. Cancelling the subscription never waits on the plugin: its
+  /// scan-stream cancel can hang after a connect, which stalled the whole
+  /// connect path when this was an `async*` generator.
   static Stream<BleDevice> scan() {
-    UniversalBle.startScan(scanFilter: ScanFilter(withServices: [bluesteerServiceUuid]));
-    return UniversalBle.scanStream;
+    late StreamController<BleDevice> out;
+    StreamSubscription<BleDevice>? inner;
+    out = StreamController<BleDevice>(
+      onListen: () async {
+        try {
+          await UniversalBle.startScan(scanFilter: ScanFilter(withServices: [bluesteerServiceUuid]));
+        } catch (e, st) {
+          out.addError(e, st);
+          return;
+        }
+        if (out.isClosed) return;
+        inner = UniversalBle.scanStream.listen((d) {
+          debugPrint('[scan] ${d.deviceId} name=${d.name}');
+          if (!out.isClosed) out.add(d);
+        });
+      },
+      onCancel: () {
+        inner?.cancel();
+        out.close();
+      },
+    );
+    return out.stream;
   }
+
+  static const _namePrefix = 'BlueSteer ';
+
+  /// The result carries the host's own local name (not a cached system name).
+  static bool hasAdvertisedName(BleDevice d) => (d.name ?? '').startsWith(_namePrefix);
 
   /// The host name from the advertised local name `BlueSteer <name>`.
   static String advertisedName(BleDevice d) {
     final n = d.name ?? '';
-    return n.startsWith('BlueSteer ') ? n.substring(10) : (n.isEmpty ? d.deviceId : n);
+    return n.startsWith(_namePrefix) ? n.substring(_namePrefix.length) : (n.isEmpty ? d.deviceId : n);
   }
 
-  /// Connects, reads INFO, subscribes to TX.
-  static Future<HostLink> connect(BleDevice device) async {
+  /// Connects, reads INFO, subscribes to TX. On any failure the device is
+  /// disconnected again: the plugin's timeout is Dart-side only, so a connect
+  /// it gave up on would otherwise keep going natively.
+  static Future<HostLink> connect(BleDevice device, {Duration timeout = connectTimeout}) async {
+    try {
+      return await _connect(device).timeout(timeout);
+    } catch (_) {
+      try {
+        await UniversalBle.disconnect(device.deviceId);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  static Future<HostLink> _connect(BleDevice device) async {
     await device.connect();
     var mtu = 23;
     try {
@@ -68,10 +119,21 @@ class HostLink {
     final tx = service.getCharacteristic(_txUuid);
     final rx = service.getCharacteristic(_rxUuid);
     final incoming = StreamController<Uint8List>.broadcast();
-    tx.onValueReceived.listen(incoming.add);
-    await tx.notifications.subscribe();
+    final txSub = tx.onValueReceived.listen((v) {
+      if (!incoming.isClosed) incoming.add(v);
+    });
     // Android rejects writes above 512 bytes regardless of MTU (Phase 0 results).
-    return HostLink._(device, info, status, rx, max(20, min(mtu - 3, 512)), incoming);
+    final link = HostLink._(device, info, status, rx, max(20, min(mtu - 3, 512)), incoming, txSub);
+    link._connSub = device.connectionStream.listen((connected) {
+      if (!connected) link._die();
+    });
+    try {
+      await tx.notifications.subscribe();
+    } catch (_) {
+      link._die();
+      rethrow;
+    }
+    return link;
   }
 
   /// STATUS bit 0 (SPEC.md §1.1): the host's pairing window is open.
@@ -80,20 +142,37 @@ class HostLink {
     return v.isNotEmpty && (v[0] & 1) == 1;
   }
 
-  /// Writes bytes in order, chunked to what the link accepts.
+  /// Writes bytes in order, chunked to what the link accepts. A failed write
+  /// ends the link (the host is unreachable); later writes fail at once.
+  @override
   Future<void> write(List<int> bytes) {
-    _writeQueue = _writeQueue.then((_) async {
+    final next = _writeQueue.then((_) => _writeChunks(bytes));
+    _writeQueue = next.catchError((_) {});
+    return next;
+  }
+
+  Future<void> _writeChunks(List<int> bytes) async {
+    if (_dead) throw StateError('link closed');
+    try {
       for (var i = 0; i < bytes.length; i += _chunkSize) {
         await _rx.write(bytes.sublist(i, min(i + _chunkSize, bytes.length)), withResponse: false);
       }
-    });
-    return _writeQueue;
+    } catch (_) {
+      _die();
+      rethrow;
+    }
   }
 
-  Future<void> close() async {
-    await _incoming.close();
-    try {
-      await device.disconnect();
-    } catch (_) {}
+  @override
+  Future<void> close() async => _die();
+
+  /// Ends the link once: stops listening, closes [incoming], disconnects.
+  void _die() {
+    if (_dead) return;
+    _dead = true;
+    _txSub.cancel();
+    _connSub?.cancel();
+    _incoming.close();
+    device.disconnect().catchError((_) {});
   }
 }

@@ -60,10 +60,17 @@ class _HostsPageState extends State<HostsPage> {
     _connection = connection;
     try {
       await connection.connect();
+      // The Mac may have been renamed since pairing: keep its current name.
+      final name = connection.hello?.hostName ?? '';
+      if (name.isNotEmpty && name != host.name) {
+        await widget.identity.addHost(PairedHost(id: host.id, name: name, hostKey: host.hostKey));
+        if (mounted) setState(() {});
+      }
       final rtt = await connection.ping();
       setState(() => _status[host.id] = 'Connected · ${connection.hello?.hostVersion ?? ''} · ping ${rtt.inMilliseconds} ms');
       if (!mounted) return;
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SessionsPage(connection: connection, hostName: host.name)));
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => SessionsPage(connection: connection, hostName: name.isEmpty ? host.name : name)));
       if (mounted) setState(() => _status.remove(host.id));
     } catch (e) {
       if (mounted) setState(() => _status[host.id] = 'Failed: $e');

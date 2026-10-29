@@ -60,7 +60,12 @@ public final class HostController {
     private var pendingSessions: [SessionID: (link: BLEPeripheralService.LinkID, cmdID: UInt64, timer: Timer)] = [:]
     static let sessionStartTimeout: TimeInterval = 10
 
-    public init(store: PairingStore, displayName: String = ProcessInfo.processInfo.hostName) throws {
+    /// The Mac's Computer Name ("Marek's MacBook"), not its DNS host name.
+    public static var defaultDisplayName: String {
+        Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+    }
+
+    public init(store: PairingStore, displayName: String = HostController.defaultDisplayName) throws {
         self.store = store
         self.displayName = displayName
         pairedRemotes = store.remotes
@@ -240,6 +245,7 @@ public final class HostController {
         var bytes = bytes
         if channels[id] == nil {
             guard awaitingSelector.contains(id), let first = bytes.first else { return }
+            log("link \(id) handshake started, selector \(first), \(bytes.count) bytes")
             awaitingSelector.remove(id)
             guard let selector = Selector(rawValue: first), let channel = openChannel(selector) else {
                 log("link \(id) rejected selector \(first) (pairing=\(pairingOpen))")
