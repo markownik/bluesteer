@@ -107,6 +107,15 @@ class HostLink implements Link {
   /// [pending] keeps the connect request itself open that long (the plugin's
   /// default is 60 s); on iOS the system completes it when the peripheral is seen.
   static Future<HostLink> _connect(BleDevice device, {Duration? pending}) async {
+    // iOS can keep a GATT link from a previous instance of the app (reinstall,
+    // relaunch): connecting then succeeds at once, but the host still has the old
+    // link and never sees a new subscribe, so the handshake goes nowhere. Start clean.
+    try {
+      if (await UniversalBle.getConnectionState(device.deviceId) == BleConnectionState.connected) {
+        debugPrint('[link] ${device.deviceId} was still connected: dropping it first');
+        await UniversalBle.disconnect(device.deviceId);
+      }
+    } catch (_) {}
     await device.connect(timeout: pending);
     var mtu = 23;
     try {
