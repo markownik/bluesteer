@@ -96,6 +96,32 @@ void main() {
     });
   });
 
+  test('HostGoodbye dismisses the link until the user asks to reconnect', () {
+    fakeAsync((async) {
+      final link = newLink('mini');
+      final (connection, transport) = connected(async, link);
+
+      link.sayGoodbye('Disconnected by mini');
+      async.flushMicrotasks();
+      expect(connection.state.value, LinkState.dismissed);
+      expect(connection.error, 'Disconnected by mini');
+      expect(link.closed, isTrue);
+      async.elapse(const Duration(seconds: 60));
+      expect(transport.attempts, hasLength(1), reason: 'nothing is tried after a goodbye');
+
+      connection.reconnect();
+      async.flushMicrotasks();
+      expect(connection.state.value, LinkState.reconnecting);
+      expect(transport.attempts, hasLength(2));
+      final second = newLink('mini');
+      transport.attempts[1].complete(second);
+      async.flushMicrotasks();
+      expect(connection.state.value, LinkState.connected);
+      connection.close();
+      async.flushMicrotasks();
+    });
+  });
+
   test('a failed write drops the link and reconnects', () {
     fakeAsync((async) {
       final link = newLink('mini');

@@ -55,6 +55,11 @@ class FakeLink implements Link {
     }
   }
 
+  /// The Mac's user chose "Disconnect all" (SPEC.md §4.1).
+  Future<void> sayGoodbye(String reason) async {
+    _toRemote.add(await _mac!.encrypt((Envelope()..hostGoodbye = (HostGoodbye()..reason = reason)).writeToBuffer()));
+  }
+
   @override
   Future<void> close() async {
     if (closed) return;

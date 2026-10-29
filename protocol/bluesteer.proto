@@ -24,6 +24,7 @@ message Envelope {
     Notification notification = 7;
     Ack ack = 8;
     Projects projects = 9;
+    HostGoodbye host_goodbye = 10;
 
     // Remote → Host
     ListSessions list_sessions = 20;
@@ -135,6 +136,13 @@ message Ack {
 
 message Projects {
   repeated string recent_cwds = 1;
+}
+
+// The host is dropping this link on purpose (the user chose "Disconnect all"
+// on the Mac). The remote closes the link and does not reconnect until its
+// user asks (SPEC.md §6).
+message HostGoodbye {
+  string reason = 1;              // shown to the user ("disconnected by Marek's MacBook")
 }
 
 // ---------------------------------------------------------------------------

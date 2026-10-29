@@ -161,6 +161,15 @@ const Envelope$json = {
       '10': 'projects'
     },
     {
+      '1': 'host_goodbye',
+      '3': 10,
+      '4': 1,
+      '5': 11,
+      '6': '.bluesteer.v1.HostGoodbye',
+      '9': 0,
+      '10': 'hostGoodbye'
+    },
+    {
       '1': 'list_sessions',
       '3': 20,
       '4': 1,
@@ -294,22 +303,23 @@ final $typed_data.Uint8List envelopeDescriptor = $convert.base64Decode(
     'cm9sbGJhY2sYBiABKAsyGC5ibHVlc3RlZXIudjEuU2Nyb2xsYmFja0gAUgpzY3JvbGxiYWNrEk'
     'AKDG5vdGlmaWNhdGlvbhgHIAEoCzIaLmJsdWVzdGVlci52MS5Ob3RpZmljYXRpb25IAFIMbm90'
     'aWZpY2F0aW9uEiUKA2FjaxgIIAEoCzIRLmJsdWVzdGVlci52MS5BY2tIAFIDYWNrEjQKCHByb2'
-    'plY3RzGAkgASgLMhYuYmx1ZXN0ZWVyLnYxLlByb2plY3RzSABSCHByb2plY3RzEkEKDWxpc3Rf'
-    'c2Vzc2lvbnMYFCABKAsyGi5ibHVlc3RlZXIudjEuTGlzdFNlc3Npb25zSABSDGxpc3RTZXNzaW'
-    '9ucxI3CglzdWJzY3JpYmUYFSABKAsyFy5ibHVlc3RlZXIudjEuU3Vic2NyaWJlSABSCXN1YnNj'
-    'cmliZRI9Cgt1bnN1YnNjcmliZRgWIAEoCzIZLmJsdWVzdGVlci52MS5VbnN1YnNjcmliZUgAUg'
-    't1bnN1YnNjcmliZRI7CgtuZXdfc2Vzc2lvbhgXIAEoCzIYLmJsdWVzdGVlci52MS5OZXdTZXNz'
-    'aW9uSABSCm5ld1Nlc3Npb24STQoRYXR0YWNoX2JhY2tncm91bmQYGCABKAsyHi5ibHVlc3RlZX'
-    'IudjEuQXR0YWNoQmFja2dyb3VuZEgAUhBhdHRhY2hCYWNrZ3JvdW5kEjgKCnRlcm1faW5wdXQY'
-    'GSABKAsyFy5ibHVlc3RlZXIudjEuVGVybUlucHV0SABSCXRlcm1JbnB1dBIuCgZyZXNpemUYGi'
-    'ABKAsyFC5ibHVlc3RlZXIudjEuUmVzaXplSABSBnJlc2l6ZRJKChBmZXRjaF9zY3JvbGxiYWNr'
-    'GBsgASgLMh0uYmx1ZXN0ZWVyLnYxLkZldGNoU2Nyb2xsYmFja0gAUg9mZXRjaFNjcm9sbGJhY2'
-    'sSPgoMc3RvcF9zZXNzaW9uGBwgASgLMhkuYmx1ZXN0ZWVyLnYxLlN0b3BTZXNzaW9uSABSC3N0'
-    'b3BTZXNzaW9uEigKBHBpbmcYHSABKAsyEi5ibHVlc3RlZXIudjEuUGluZ0gAUgRwaW5nEigKBH'
-    'BvbmcYHiABKAsyEi5ibHVlc3RlZXIudjEuUG9uZ0gAUgRwb25nEj4KDHJlbW90ZV9oZWxsbxgf'
-    'IAEoCzIZLmJsdWVzdGVlci52MS5SZW1vdGVIZWxsb0gAUgtyZW1vdGVIZWxsbxI+CgxwYWlyX2'
-    'NvbmZpcm0YICABKAsyGS5ibHVlc3RlZXIudjEuUGFpckNvbmZpcm1IAFILcGFpckNvbmZpcm1C'
-    'BgoEYm9keQ==');
+    'plY3RzGAkgASgLMhYuYmx1ZXN0ZWVyLnYxLlByb2plY3RzSABSCHByb2plY3RzEj4KDGhvc3Rf'
+    'Z29vZGJ5ZRgKIAEoCzIZLmJsdWVzdGVlci52MS5Ib3N0R29vZGJ5ZUgAUgtob3N0R29vZGJ5ZR'
+    'JBCg1saXN0X3Nlc3Npb25zGBQgASgLMhouYmx1ZXN0ZWVyLnYxLkxpc3RTZXNzaW9uc0gAUgxs'
+    'aXN0U2Vzc2lvbnMSNwoJc3Vic2NyaWJlGBUgASgLMhcuYmx1ZXN0ZWVyLnYxLlN1YnNjcmliZU'
+    'gAUglzdWJzY3JpYmUSPQoLdW5zdWJzY3JpYmUYFiABKAsyGS5ibHVlc3RlZXIudjEuVW5zdWJz'
+    'Y3JpYmVIAFILdW5zdWJzY3JpYmUSOwoLbmV3X3Nlc3Npb24YFyABKAsyGC5ibHVlc3RlZXIudj'
+    'EuTmV3U2Vzc2lvbkgAUgpuZXdTZXNzaW9uEk0KEWF0dGFjaF9iYWNrZ3JvdW5kGBggASgLMh4u'
+    'Ymx1ZXN0ZWVyLnYxLkF0dGFjaEJhY2tncm91bmRIAFIQYXR0YWNoQmFja2dyb3VuZBI4Cgp0ZX'
+    'JtX2lucHV0GBkgASgLMhcuYmx1ZXN0ZWVyLnYxLlRlcm1JbnB1dEgAUgl0ZXJtSW5wdXQSLgoG'
+    'cmVzaXplGBogASgLMhQuYmx1ZXN0ZWVyLnYxLlJlc2l6ZUgAUgZyZXNpemUSSgoQZmV0Y2hfc2'
+    'Nyb2xsYmFjaxgbIAEoCzIdLmJsdWVzdGVlci52MS5GZXRjaFNjcm9sbGJhY2tIAFIPZmV0Y2hT'
+    'Y3JvbGxiYWNrEj4KDHN0b3Bfc2Vzc2lvbhgcIAEoCzIZLmJsdWVzdGVlci52MS5TdG9wU2Vzc2'
+    'lvbkgAUgtzdG9wU2Vzc2lvbhIoCgRwaW5nGB0gASgLMhIuYmx1ZXN0ZWVyLnYxLlBpbmdIAFIE'
+    'cGluZxIoCgRwb25nGB4gASgLMhIuYmx1ZXN0ZWVyLnYxLlBvbmdIAFIEcG9uZxI+CgxyZW1vdG'
+    'VfaGVsbG8YHyABKAsyGS5ibHVlc3RlZXIudjEuUmVtb3RlSGVsbG9IAFILcmVtb3RlSGVsbG8S'
+    'PgoMcGFpcl9jb25maXJtGCAgASgLMhkuYmx1ZXN0ZWVyLnYxLlBhaXJDb25maXJtSABSC3BhaX'
+    'JDb25maXJtQgYKBGJvZHk=');
 
 @$core.Deprecated('Use hostHelloDescriptor instead')
 const HostHello$json = {
@@ -490,6 +500,18 @@ const Projects$json = {
 /// Descriptor for `Projects`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List projectsDescriptor = $convert.base64Decode(
     'CghQcm9qZWN0cxIfCgtyZWNlbnRfY3dkcxgBIAMoCVIKcmVjZW50Q3dkcw==');
+
+@$core.Deprecated('Use hostGoodbyeDescriptor instead')
+const HostGoodbye$json = {
+  '1': 'HostGoodbye',
+  '2': [
+    {'1': 'reason', '3': 1, '4': 1, '5': 9, '10': 'reason'},
+  ],
+};
+
+/// Descriptor for `HostGoodbye`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List hostGoodbyeDescriptor = $convert
+    .base64Decode('CgtIb3N0R29vZGJ5ZRIWCgZyZWFzb24YASABKAlSBnJlYXNvbg==');
 
 @$core.Deprecated('Use listSessionsDescriptor instead')
 const ListSessions$json = {

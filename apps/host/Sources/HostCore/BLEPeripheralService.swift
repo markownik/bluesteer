@@ -26,6 +26,9 @@ public final class BLEPeripheralService: NSObject {
     private let localName: String
     private var centrals: [LinkID: CBCentral] = [:]
     private var pairingOpen = false
+    private var accepting = true
+    /// Time for a goodbye already queued to reach the centrals before the service goes away.
+    static let goodbyeGrace: TimeInterval = 0.5
     private var queues: [LinkID: SendQueue] = [:]
     private let queue = DispatchQueue(label: "dev.bluesteer.ble")
 
@@ -75,12 +78,40 @@ public final class BLEPeripheralService: NSObject {
         queue.async { [self] in pairingOpen = open }
     }
 
-    public func disconnectAll() {
+    /// Whether remotes may connect. `false` ("Disconnect all") stops advertising,
+    /// withdraws the service and closes every link after `goodbyeGrace`, so a
+    /// goodbye queued just before still goes out; CoreBluetooth has no
+    /// peripheral-side disconnect, but a central whose service vanished fails on
+    /// its next write and drops the link itself. `true` publishes the service again.
+    public func setAccepting(_ accepting: Bool) {
         queue.async { [self] in
-            // CoreBluetooth has no peripheral-side disconnect; dropping the queues and
-            // restarting advertising is the closest thing. Centrals time out on their own.
-            queues.removeAll()
+            self.accepting = accepting
+            guard manager.state == .poweredOn else { return }
+            if accepting {
+                publish()
+                return
+            }
+            pump()
+            queue.asyncAfter(deadline: .now() + Self.goodbyeGrace) { [self] in
+                guard !self.accepting else { return }
+                manager.stopAdvertising()
+                manager.removeAllServices()
+                isAdvertising = false
+                closeAllLinks()
+            }
         }
+    }
+
+    /// (Re)creates the GATT service and starts advertising once it is added.
+    private func publish() {
+        tx = CBMutableCharacteristic(type: Self.txUUID, properties: [.notify], value: nil, permissions: [.readable])
+        let rx = CBMutableCharacteristic(type: Self.rxUUID, properties: [.writeWithoutResponse, .write], value: nil, permissions: [.writeable])
+        let info = CBMutableCharacteristic(type: Self.infoUUID, properties: [.read], value: infoValue, permissions: [.readable])
+        let status = CBMutableCharacteristic(type: Self.statusUUID, properties: [.read], value: nil, permissions: [.readable])
+        let service = CBMutableService(type: Self.serviceUUID, primary: true)
+        service.characteristics = [tx, rx, info, status]
+        manager.removeAllServices()
+        manager.add(service)
     }
 
     private func pump() {
@@ -112,14 +143,7 @@ extension BLEPeripheralService: CBPeripheralManagerDelegate {
             closeAllLinks()
             return
         }
-        tx = CBMutableCharacteristic(type: Self.txUUID, properties: [.notify], value: nil, permissions: [.readable])
-        let rx = CBMutableCharacteristic(type: Self.rxUUID, properties: [.writeWithoutResponse, .write], value: nil, permissions: [.writeable])
-        let info = CBMutableCharacteristic(type: Self.infoUUID, properties: [.read], value: infoValue, permissions: [.readable])
-        let status = CBMutableCharacteristic(type: Self.statusUUID, properties: [.read], value: nil, permissions: [.readable])
-        let service = CBMutableService(type: Self.serviceUUID, primary: true)
-        service.characteristics = [tx, rx, info, status]
-        p.removeAllServices()
-        p.add(service)
+        if accepting { publish() }
     }
 
     public func peripheralManager(_ p: CBPeripheralManager, didAdd service: CBService, error: Error?) {

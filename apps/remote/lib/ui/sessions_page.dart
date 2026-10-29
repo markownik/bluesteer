@@ -109,11 +109,15 @@ class _SessionsPageState extends State<SessionsPage> {
       body: Column(children: [
         ValueListenableBuilder<LinkState>(
           valueListenable: widget.connection.state,
-          builder: (_, state, _) => state == LinkState.reconnecting
-              ? MaterialBanner(
-                  content: Semantics(liveRegion: true, child: Text('Reconnecting to ${widget.hostName}…')),
-                  actions: const [SizedBox.shrink()])
-              : const SizedBox.shrink(),
+          builder: (_, state, _) => switch (state) {
+            LinkState.reconnecting => MaterialBanner(
+                content: Semantics(liveRegion: true, child: Text('Reconnecting to ${widget.hostName}…')),
+                actions: const [SizedBox.shrink()]),
+            LinkState.dismissed => MaterialBanner(
+                content: Semantics(liveRegion: true, child: Text(widget.connection.error ?? 'Disconnected by ${widget.hostName}')),
+                actions: [TextButton(onPressed: widget.connection.reconnect, child: const Text('Reconnect'))]),
+            _ => const SizedBox.shrink(),
+          },
         ),
         Expanded(child: list.isEmpty
           ? Center(child: Text(_starting ? 'Starting a terminal…' : 'No terminals running.'))

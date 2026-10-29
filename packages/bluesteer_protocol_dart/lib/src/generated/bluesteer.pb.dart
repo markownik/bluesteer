@@ -31,6 +31,7 @@ enum Envelope_Body {
   notification,
   ack,
   projects,
+  hostGoodbye,
   listSessions,
   subscribe,
   unsubscribe,
@@ -58,6 +59,7 @@ class Envelope extends $pb.GeneratedMessage {
     Notification? notification,
     Ack? ack,
     Projects? projects,
+    HostGoodbye? hostGoodbye,
     ListSessions? listSessions,
     Subscribe? subscribe,
     Unsubscribe? unsubscribe,
@@ -82,6 +84,7 @@ class Envelope extends $pb.GeneratedMessage {
     if (notification != null) result.notification = notification;
     if (ack != null) result.ack = ack;
     if (projects != null) result.projects = projects;
+    if (hostGoodbye != null) result.hostGoodbye = hostGoodbye;
     if (listSessions != null) result.listSessions = listSessions;
     if (subscribe != null) result.subscribe = subscribe;
     if (unsubscribe != null) result.unsubscribe = unsubscribe;
@@ -117,6 +120,7 @@ class Envelope extends $pb.GeneratedMessage {
     7: Envelope_Body.notification,
     8: Envelope_Body.ack,
     9: Envelope_Body.projects,
+    10: Envelope_Body.hostGoodbye,
     20: Envelope_Body.listSessions,
     21: Envelope_Body.subscribe,
     22: Envelope_Body.unsubscribe,
@@ -146,6 +150,7 @@ class Envelope extends $pb.GeneratedMessage {
       7,
       8,
       9,
+      10,
       20,
       21,
       22,
@@ -177,6 +182,8 @@ class Envelope extends $pb.GeneratedMessage {
     ..aOM<Ack>(8, _omitFieldNames ? '' : 'ack', subBuilder: Ack.$_createMessage)
     ..aOM<Projects>(9, _omitFieldNames ? '' : 'projects',
         subBuilder: Projects.$_createMessage)
+    ..aOM<HostGoodbye>(10, _omitFieldNames ? '' : 'hostGoodbye',
+        subBuilder: HostGoodbye.$_createMessage)
     ..aOM<ListSessions>(20, _omitFieldNames ? '' : 'listSessions',
         subBuilder: ListSessions.$_createMessage)
     ..aOM<Subscribe>(21, _omitFieldNames ? '' : 'subscribe',
@@ -234,6 +241,7 @@ class Envelope extends $pb.GeneratedMessage {
   @$pb.TagNumber(7)
   @$pb.TagNumber(8)
   @$pb.TagNumber(9)
+  @$pb.TagNumber(10)
   @$pb.TagNumber(20)
   @$pb.TagNumber(21)
   @$pb.TagNumber(22)
@@ -257,6 +265,7 @@ class Envelope extends $pb.GeneratedMessage {
   @$pb.TagNumber(7)
   @$pb.TagNumber(8)
   @$pb.TagNumber(9)
+  @$pb.TagNumber(10)
   @$pb.TagNumber(20)
   @$pb.TagNumber(21)
   @$pb.TagNumber(22)
@@ -372,149 +381,160 @@ class Envelope extends $pb.GeneratedMessage {
   @$pb.TagNumber(9)
   Projects ensureProjects() => $_ensure(8);
 
+  @$pb.TagNumber(10)
+  HostGoodbye get hostGoodbye => $_getN(9);
+  @$pb.TagNumber(10)
+  set hostGoodbye(HostGoodbye value) => $_setField(10, value);
+  @$pb.TagNumber(10)
+  $core.bool hasHostGoodbye() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearHostGoodbye() => $_clearField(10);
+  @$pb.TagNumber(10)
+  HostGoodbye ensureHostGoodbye() => $_ensure(9);
+
   /// Remote → Host
   @$pb.TagNumber(20)
-  ListSessions get listSessions => $_getN(9);
+  ListSessions get listSessions => $_getN(10);
   @$pb.TagNumber(20)
   set listSessions(ListSessions value) => $_setField(20, value);
   @$pb.TagNumber(20)
-  $core.bool hasListSessions() => $_has(9);
+  $core.bool hasListSessions() => $_has(10);
   @$pb.TagNumber(20)
   void clearListSessions() => $_clearField(20);
   @$pb.TagNumber(20)
-  ListSessions ensureListSessions() => $_ensure(9);
+  ListSessions ensureListSessions() => $_ensure(10);
 
   @$pb.TagNumber(21)
-  Subscribe get subscribe => $_getN(10);
+  Subscribe get subscribe => $_getN(11);
   @$pb.TagNumber(21)
   set subscribe(Subscribe value) => $_setField(21, value);
   @$pb.TagNumber(21)
-  $core.bool hasSubscribe() => $_has(10);
+  $core.bool hasSubscribe() => $_has(11);
   @$pb.TagNumber(21)
   void clearSubscribe() => $_clearField(21);
   @$pb.TagNumber(21)
-  Subscribe ensureSubscribe() => $_ensure(10);
+  Subscribe ensureSubscribe() => $_ensure(11);
 
   @$pb.TagNumber(22)
-  Unsubscribe get unsubscribe => $_getN(11);
+  Unsubscribe get unsubscribe => $_getN(12);
   @$pb.TagNumber(22)
   set unsubscribe(Unsubscribe value) => $_setField(22, value);
   @$pb.TagNumber(22)
-  $core.bool hasUnsubscribe() => $_has(11);
+  $core.bool hasUnsubscribe() => $_has(12);
   @$pb.TagNumber(22)
   void clearUnsubscribe() => $_clearField(22);
   @$pb.TagNumber(22)
-  Unsubscribe ensureUnsubscribe() => $_ensure(11);
+  Unsubscribe ensureUnsubscribe() => $_ensure(12);
 
   @$pb.TagNumber(23)
-  NewSession get newSession => $_getN(12);
+  NewSession get newSession => $_getN(13);
   @$pb.TagNumber(23)
   set newSession(NewSession value) => $_setField(23, value);
   @$pb.TagNumber(23)
-  $core.bool hasNewSession() => $_has(12);
+  $core.bool hasNewSession() => $_has(13);
   @$pb.TagNumber(23)
   void clearNewSession() => $_clearField(23);
   @$pb.TagNumber(23)
-  NewSession ensureNewSession() => $_ensure(12);
+  NewSession ensureNewSession() => $_ensure(13);
 
   @$pb.TagNumber(24)
-  AttachBackground get attachBackground => $_getN(13);
+  AttachBackground get attachBackground => $_getN(14);
   @$pb.TagNumber(24)
   set attachBackground(AttachBackground value) => $_setField(24, value);
   @$pb.TagNumber(24)
-  $core.bool hasAttachBackground() => $_has(13);
+  $core.bool hasAttachBackground() => $_has(14);
   @$pb.TagNumber(24)
   void clearAttachBackground() => $_clearField(24);
   @$pb.TagNumber(24)
-  AttachBackground ensureAttachBackground() => $_ensure(13);
+  AttachBackground ensureAttachBackground() => $_ensure(14);
 
   @$pb.TagNumber(25)
-  TermInput get termInput => $_getN(14);
+  TermInput get termInput => $_getN(15);
   @$pb.TagNumber(25)
   set termInput(TermInput value) => $_setField(25, value);
   @$pb.TagNumber(25)
-  $core.bool hasTermInput() => $_has(14);
+  $core.bool hasTermInput() => $_has(15);
   @$pb.TagNumber(25)
   void clearTermInput() => $_clearField(25);
   @$pb.TagNumber(25)
-  TermInput ensureTermInput() => $_ensure(14);
+  TermInput ensureTermInput() => $_ensure(15);
 
   @$pb.TagNumber(26)
-  Resize get resize => $_getN(15);
+  Resize get resize => $_getN(16);
   @$pb.TagNumber(26)
   set resize(Resize value) => $_setField(26, value);
   @$pb.TagNumber(26)
-  $core.bool hasResize() => $_has(15);
+  $core.bool hasResize() => $_has(16);
   @$pb.TagNumber(26)
   void clearResize() => $_clearField(26);
   @$pb.TagNumber(26)
-  Resize ensureResize() => $_ensure(15);
+  Resize ensureResize() => $_ensure(16);
 
   @$pb.TagNumber(27)
-  FetchScrollback get fetchScrollback => $_getN(16);
+  FetchScrollback get fetchScrollback => $_getN(17);
   @$pb.TagNumber(27)
   set fetchScrollback(FetchScrollback value) => $_setField(27, value);
   @$pb.TagNumber(27)
-  $core.bool hasFetchScrollback() => $_has(16);
+  $core.bool hasFetchScrollback() => $_has(17);
   @$pb.TagNumber(27)
   void clearFetchScrollback() => $_clearField(27);
   @$pb.TagNumber(27)
-  FetchScrollback ensureFetchScrollback() => $_ensure(16);
+  FetchScrollback ensureFetchScrollback() => $_ensure(17);
 
   @$pb.TagNumber(28)
-  StopSession get stopSession => $_getN(17);
+  StopSession get stopSession => $_getN(18);
   @$pb.TagNumber(28)
   set stopSession(StopSession value) => $_setField(28, value);
   @$pb.TagNumber(28)
-  $core.bool hasStopSession() => $_has(17);
+  $core.bool hasStopSession() => $_has(18);
   @$pb.TagNumber(28)
   void clearStopSession() => $_clearField(28);
   @$pb.TagNumber(28)
-  StopSession ensureStopSession() => $_ensure(17);
+  StopSession ensureStopSession() => $_ensure(18);
 
   @$pb.TagNumber(29)
-  Ping get ping => $_getN(18);
+  Ping get ping => $_getN(19);
   @$pb.TagNumber(29)
   set ping(Ping value) => $_setField(29, value);
   @$pb.TagNumber(29)
-  $core.bool hasPing() => $_has(18);
+  $core.bool hasPing() => $_has(19);
   @$pb.TagNumber(29)
   void clearPing() => $_clearField(29);
   @$pb.TagNumber(29)
-  Ping ensurePing() => $_ensure(18);
+  Ping ensurePing() => $_ensure(19);
 
   @$pb.TagNumber(30)
-  Pong get pong => $_getN(19);
+  Pong get pong => $_getN(20);
   @$pb.TagNumber(30)
   set pong(Pong value) => $_setField(30, value);
   @$pb.TagNumber(30)
-  $core.bool hasPong() => $_has(19);
+  $core.bool hasPong() => $_has(20);
   @$pb.TagNumber(30)
   void clearPong() => $_clearField(30);
   @$pb.TagNumber(30)
-  Pong ensurePong() => $_ensure(19);
+  Pong ensurePong() => $_ensure(20);
 
   @$pb.TagNumber(31)
-  RemoteHello get remoteHello => $_getN(20);
+  RemoteHello get remoteHello => $_getN(21);
   @$pb.TagNumber(31)
   set remoteHello(RemoteHello value) => $_setField(31, value);
   @$pb.TagNumber(31)
-  $core.bool hasRemoteHello() => $_has(20);
+  $core.bool hasRemoteHello() => $_has(21);
   @$pb.TagNumber(31)
   void clearRemoteHello() => $_clearField(31);
   @$pb.TagNumber(31)
-  RemoteHello ensureRemoteHello() => $_ensure(20);
+  RemoteHello ensureRemoteHello() => $_ensure(21);
 
   @$pb.TagNumber(32)
-  PairConfirm get pairConfirm => $_getN(21);
+  PairConfirm get pairConfirm => $_getN(22);
   @$pb.TagNumber(32)
   set pairConfirm(PairConfirm value) => $_setField(32, value);
   @$pb.TagNumber(32)
-  $core.bool hasPairConfirm() => $_has(21);
+  $core.bool hasPairConfirm() => $_has(22);
   @$pb.TagNumber(32)
   void clearPairConfirm() => $_clearField(32);
   @$pb.TagNumber(32)
-  PairConfirm ensurePairConfirm() => $_ensure(21);
+  PairConfirm ensurePairConfirm() => $_ensure(22);
 }
 
 class HostHello extends $pb.GeneratedMessage {
@@ -1331,6 +1351,66 @@ class Projects extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(1)
   $pb.PbList<$core.String> get recentCwds => $_getList(0);
+}
+
+/// The host is dropping this link on purpose (the user chose "Disconnect all"
+/// on the Mac). The remote closes the link and does not reconnect until its
+/// user asks (SPEC.md §6).
+class HostGoodbye extends $pb.GeneratedMessage {
+  factory HostGoodbye({
+    $core.String? reason,
+  }) {
+    final result = HostGoodbye._();
+    if (reason != null) result.reason = reason;
+    return result;
+  }
+
+  HostGoodbye._();
+
+  factory HostGoodbye.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      HostGoodbye()..mergeFromBuffer(data, registry);
+  factory HostGoodbye.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      HostGoodbye()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'HostGoodbye',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'bluesteer.v1'),
+      createEmptyInstance: HostGoodbye.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'reason')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HostGoodbye clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HostGoodbye copyWith(void Function(HostGoodbye) updates) =>
+      super.copyWith((message) => updates(message as HostGoodbye))
+          as HostGoodbye;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use HostGoodbye() / HostGoodbye.new instead')
+  static HostGoodbye create() => HostGoodbye._();
+  static $pb.GeneratedMessage $_createMessage() => HostGoodbye._();
+  @$core.override
+  HostGoodbye createEmptyInstance() => HostGoodbye._();
+  @$core.pragma('dart2js:noInline')
+  static HostGoodbye getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<HostGoodbye>(
+          HostGoodbye.$_createMessage);
+  static HostGoodbye? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get reason => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set reason($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasReason() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearReason() => $_clearField(1);
 }
 
 class ListSessions extends $pb.GeneratedMessage {

@@ -97,6 +97,7 @@ Every transport message plaintext is exactly one serialised `bluesteer.v1.Envelo
 - `TermInput` writes bytes to the session's PTY. The host does not acknowledge individual inputs.
 - `Unsubscribe` stops the output stream. A disconnect unsubscribes everything.
 - `Ping{nonce}` is answered with `Pong{nonce}` at any time after the hellos; remotes use it to measure the round trip.
+- `HostGoodbye{reason}` tells the remote that the host is ending the link on purpose ("Disconnect all" on the Mac). The remote closes the link, shows `reason`, and does not reconnect by itself (§6).
 - Host-spawned sessions live in a helper process that outlives the host app. After a host restart the helper re-attaches within about a second, so a `Subscribe` for a known `session_id` succeeds again; a remote that receives `Ack{ok:false, error:"no such session"}` shortly after reconnecting retries once before treating the session as gone.
 
 ### 4.2 Output stream and sequence numbers
@@ -117,7 +118,7 @@ The host keeps, per subscription, a bounded queue of un-sent output (16 KiB plai
 
 ## 6. Reconnection
 
-On a BLE disconnect the remote scans for the host again and connects to it (the host's address rotates, so a direct reconnect to the old address is not attempted), with 0, 2, 4, 8 and then 10 s between attempts. While the remote's own radio is off it waits; when the radio returns it tries at once. Then it runs the §2.2 handshake and re-subscribes to the sessions it was viewing; the host answers with fresh snapshots. Sessions keep running on the host regardless of remote connectivity, and host-spawned sessions even survive a host restart (§4.1). Measured on 2026-10-29: 2–4 s from an Android phone's radio coming back to the link being established.
+On a BLE disconnect the remote scans for the host again and connects to it (the host's address rotates, so a direct reconnect to the old address is not attempted), with 0, 2, 4, 8 and then 10 s between attempts. While the remote's own radio is off it waits; when the radio returns it tries at once. Then it runs the §2.2 handshake and re-subscribes to the sessions it was viewing; the host answers with fresh snapshots. Sessions keep running on the host regardless of remote connectivity, and host-spawned sessions even survive a host restart (§4.1). A link ended with `HostGoodbye` (§4.1) is not reconnected automatically: the host has also stopped advertising until its user accepts remotes again, so the remote waits for its user to retry. Measured on 2026-10-29: 2–4 s from an Android phone's radio coming back to the link being established.
 
 ## 7. Versioning
 

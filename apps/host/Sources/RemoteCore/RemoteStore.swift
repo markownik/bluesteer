@@ -15,13 +15,13 @@ public final class RemoteStore {
 
     private struct File: Codable {
         var privateKey: Data
-        var deviceName: String?
         var hosts: [Host]
     }
 
     public let keyPair: NoiseKeyPair
     public private(set) var hosts: [Host]
-    public var deviceName: String
+    /// This Mac's Computer Name ("Marek's MacBook"), sent in `RemoteHello`; the host shows it.
+    public let deviceName = HostController.defaultDisplayName
     private let url: URL
 
     public init(directory: URL = HostInfo.supportDirectory) throws {
@@ -31,11 +31,9 @@ public final class RemoteStore {
         if let data = try? Data(contentsOf: url), let file = try? JSONDecoder().decode(File.self, from: data) {
             keyPair = try NoiseKeyPair(privateKey: file.privateKey)
             hosts = file.hosts
-            deviceName = file.deviceName ?? ProcessInfo.processInfo.hostName
         } else {
             keyPair = NoiseKeyPair()
             hosts = []
-            deviceName = ProcessInfo.processInfo.hostName
             try save()
         }
     }
@@ -52,7 +50,7 @@ public final class RemoteStore {
     }
 
     private func save() throws {
-        let data = try JSONEncoder().encode(File(privateKey: keyPair.privateKey.rawRepresentation, deviceName: deviceName, hosts: hosts))
+        let data = try JSONEncoder().encode(File(privateKey: keyPair.privateKey.rawRepresentation, hosts: hosts))
         try data.write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }

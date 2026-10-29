@@ -227,6 +227,10 @@ func cmdConnect(_ args: [String]) -> Int32 {
             print("\r\n[bluesteer] session exited (\(code))")
             remoteQueue.sync { session.close() }
             return code
+        case .dismissed(let reason)?:
+            print("\r\n[bluesteer] \(reason); run `bluesteer connect` again once it accepts remotes")
+            remoteQueue.sync { session.close() }
+            return 0
         case .error(let e)?:
             fail("\r\n\(e.localizedDescription)")
         case .linkLost?, nil:

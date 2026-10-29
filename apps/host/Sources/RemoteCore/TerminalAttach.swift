@@ -8,7 +8,7 @@ public final class TerminalAttach {
     public static let detachKey: UInt8 = 0x1d  // Ctrl-]
     public static let scrollbackLines: UInt32 = 500
 
-    public enum Outcome { case detached, sessionExited(Int32), linkLost, error(Swift.Error) }
+    public enum Outcome { case detached, sessionExited(Int32), linkLost, dismissed(String), error(Swift.Error) }
 
     public enum Error: Swift.Error, LocalizedError {
         /// The host no longer has the session we were attached to.
@@ -118,6 +118,9 @@ public final class TerminalAttach {
             finish(.sessionExited(st.exitCode))
         case .ack(let ack) where ack.cmdID == subscribeCmd && !ack.ok:
             finish(.error(Error.sessionGone(ack.error)))
+        case .hostGoodbye(let bye):
+            // "Disconnect all" on the Mac: it stops accepting remotes, so no reconnect loop.
+            finish(.dismissed(bye.reason.isEmpty ? "disconnected by the Mac" : bye.reason))
         default:
             break
         }

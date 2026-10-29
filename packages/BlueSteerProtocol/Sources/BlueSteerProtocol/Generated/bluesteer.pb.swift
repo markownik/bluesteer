@@ -264,6 +264,14 @@ public nonisolated struct BSEnvelope: Sendable {
     set {body = .projects(newValue)}
   }
 
+  public var hostGoodbye: BSHostGoodbye {
+    get {
+      if case .hostGoodbye(let v)? = body {return v}
+      return BSHostGoodbye()
+    }
+    set {body = .hostGoodbye(newValue)}
+  }
+
   /// Remote → Host
   public var listSessions: BSListSessions {
     get {
@@ -382,6 +390,7 @@ public nonisolated struct BSEnvelope: Sendable {
     case notification(BSNotification)
     case ack(BSAck)
     case projects(BSProjects)
+    case hostGoodbye(BSHostGoodbye)
     /// Remote → Host
     case listSessions(BSListSessions)
     case subscribe(BSSubscribe)
@@ -567,6 +576,22 @@ public nonisolated struct BSProjects: Sendable {
   // methods supported on all messages.
 
   public var recentCwds: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// The host is dropping this link on purpose (the user chose "Disconnect all"
+/// on the Mac). The remote closes the link and does not reconnect until its
+/// user asks (SPEC.md §6).
+public nonisolated struct BSHostGoodbye: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// shown to the user ("disconnected by Marek's MacBook")
+  public var reason: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -807,7 +832,7 @@ nonisolated extension BSNotificationType: SwiftProtobuf._ProtoNameProviding {
 
 nonisolated extension BSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Envelope"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}host_hello\0\u{3}session_list\0\u{3}session_state\0\u{3}term_snapshot\0\u{3}term_output\0\u{1}scrollback\0\u{1}notification\0\u{1}ack\0\u{1}projects\0\u{4}\u{b}list_sessions\0\u{1}subscribe\0\u{1}unsubscribe\0\u{3}new_session\0\u{3}attach_background\0\u{3}term_input\0\u{1}resize\0\u{3}fetch_scrollback\0\u{3}stop_session\0\u{1}ping\0\u{1}pong\0\u{3}remote_hello\0\u{3}pair_confirm\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}host_hello\0\u{3}session_list\0\u{3}session_state\0\u{3}term_snapshot\0\u{3}term_output\0\u{1}scrollback\0\u{1}notification\0\u{1}ack\0\u{1}projects\0\u{3}host_goodbye\0\u{4}\u{a}list_sessions\0\u{1}subscribe\0\u{1}unsubscribe\0\u{3}new_session\0\u{3}attach_background\0\u{3}term_input\0\u{1}resize\0\u{3}fetch_scrollback\0\u{3}stop_session\0\u{1}ping\0\u{1}pong\0\u{3}remote_hello\0\u{3}pair_confirm\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -930,6 +955,19 @@ nonisolated extension BSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
         if let v = v {
           if hadOneofValue {try decoder.handleConflictingOneOf()}
           self.body = .projects(v)
+        }
+      }()
+      case 10: try {
+        var v: BSHostGoodbye?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .hostGoodbye(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .hostGoodbye(v)
         }
       }()
       case 20: try {
@@ -1147,6 +1185,10 @@ nonisolated extension BSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     case .projects?: try {
       guard case .projects(let v)? = self.body else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+    }()
+    case .hostGoodbye?: try {
+      guard case .hostGoodbye(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
     }()
     case .listSessions?: try {
       guard case .listSessions(let v)? = self.body else { preconditionFailure() }
@@ -1612,6 +1654,36 @@ nonisolated extension BSProjects: SwiftProtobuf.Message, SwiftProtobuf._MessageI
 
   public static func ==(lhs: BSProjects, rhs: BSProjects) -> Bool {
     if lhs.recentCwds != rhs.recentCwds {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension BSHostGoodbye: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".HostGoodbye"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reason\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: BSHostGoodbye, rhs: BSHostGoodbye) -> Bool {
+    if lhs.reason != rhs.reason {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

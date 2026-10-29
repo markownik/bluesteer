@@ -114,6 +114,8 @@ class _TerminalPageState extends State<TerminalPage> with WidgetsBindingObserver
     setState(() {
       if (widget.connection.state.value == LinkState.reconnecting) {
         _status = 'reconnecting…';
+      } else if (widget.connection.state.value == LinkState.dismissed) {
+        _status = widget.connection.error ?? 'Disconnected by ${widget.hostName}';
       } else if (widget.connection.state.value == LinkState.connected && _status == 'reconnecting…') {
         _status = 'connecting…';
       }

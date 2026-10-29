@@ -13,3 +13,4 @@ Breaking wire changes bump `protocol_version` (advertised in the `INFO` characte
 - Senders check the frame size before encrypting; `TermSnapshot` payloads are capped at 32 KiB compressed, `TermOutput` and `TermInput` payloads at 4 KiB (§3).
 - The advertised local name is best effort (a macOS peripheral delivers none next to the service UUID); remotes read `INFO` for names and follow `HostHello.host_name` (§1.1).
 - `Ping`/`Pong`, the reconnect schedule and sessions surviving a host restart are specified (§4.1, §6).
+- `HostGoodbye` (10): the host ends a link on purpose ("Disconnect all"); remotes stop reconnecting until their user retries (§4.1, §6).

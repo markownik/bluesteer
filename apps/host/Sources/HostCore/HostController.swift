@@ -31,6 +31,8 @@ public final class HostController {
 
     public private(set) var bluetoothState: CBManagerState = .unknown
     public private(set) var connected: [ConnectedRemote] = []
+    /// False after "Disconnect all": no remote may connect until `acceptRemotes()`.
+    public private(set) var accepting = true
     public private(set) var pairedRemotes: [PairingStore.Remote] = []
     /// True while new remotes may pair (the pairing window is open).
     public private(set) var pairingOpen = false
@@ -45,9 +47,9 @@ public final class HostController {
 
     private let store: PairingStore
     private let ble: BLEPeripheralService
-    private let audit = AuditLog.shared
+    private let audit: AuditLog
     public let hub = SessionHub()
-    private let wrapperServer = WrapperSocketServer()
+    private let wrapperServer: WrapperSocketServer
     private var channels: [BLEPeripheralService.LinkID: SecureChannel] = [:]
     private var selectors: [BLEPeripheralService.LinkID: Selector] = [:]
     /// Links waiting for their selector byte.
@@ -65,9 +67,12 @@ public final class HostController {
         Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     }
 
-    public init(store: PairingStore, displayName: String = HostController.defaultDisplayName) throws {
+    public init(store: PairingStore, displayName: String = HostController.defaultDisplayName,
+                socketPath: String = WrapperSocket.path, audit: AuditLog = .shared) throws {
         self.store = store
         self.displayName = displayName
+        self.audit = audit
+        wrapperServer = WrapperSocketServer(path: socketPath)
         pairedRemotes = store.remotes
         instanceID = Data(SHA256Digest(store.hostKey.publicKey).prefix(16))
         ble = BLEPeripheralService(protocolVersion: protocolVersion, instanceID: instanceID, displayName: displayName)
@@ -169,6 +174,27 @@ public final class HostController {
         for link in connected.filter({ $0.key == remote.key }) { kill(link.id) }
     }
 
+    /// "Disconnect all": tells every connected remote to go away, drops the links and
+    /// stops accepting connections until `acceptRemotes()` (docs/threat-model.md).
+    public func disconnectAll() {
+        audit.record("disconnect all remotes=\"\(connected.map(\.name).joined(separator: ", "))\"")
+        endPairing()
+        let goodbye = BSEnvelope.with { $0.hostGoodbye = BSHostGoodbye.with { $0.reason = "disconnected by \(displayName)" } }
+        for remote in connected {
+            try? send(goodbye, to: remote.id)
+            kill(remote.id)
+        }
+        accepting = false
+        ble.setAccepting(false)
+    }
+
+    public func acceptRemotes() {
+        guard !accepting else { return }
+        accepting = true
+        ble.setAccepting(true)
+        audit.record("accepting remotes again")
+    }
+
     private func reject(_ pending: PendingPairing) {
         if pending.remoteConfirmed { try? ack(pending.confirmCmdID, to: pending.link, error: "rejected") }
         audit.record("pairing rejected device=\"\(pending.deviceName)\" key=\(Self.keyPrefix(pending.key))")
@@ -210,6 +236,7 @@ public final class HostController {
     // MARK: Links
 
     private func linkOpened(_ id: BLEPeripheralService.LinkID) {
+        guard accepting else { log("link \(id) opened while not accepting remotes, ignored"); return }
         // A central's identifier is stable across reconnects; a missed unsubscribe leaves stale state.
         if channels[id] != nil || selectors[id] != nil { linkClosed(id) }
         dead.remove(id)

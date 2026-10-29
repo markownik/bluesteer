@@ -77,7 +77,9 @@ struct MenuContent: View {
 
     var body: some View {
         Text("BlueSteer \(HostInfo.version) · \(bluetoothStatus)")
-        if controller.connected.isEmpty {
+        if !controller.accepting {
+            Text("Not accepting remotes").foregroundStyle(.secondary)
+        } else if controller.connected.isEmpty {
             Text("No remote connected").foregroundStyle(.secondary)
         } else {
             ForEach(controller.connected) { Text("Connected: \($0.name)") }
@@ -94,6 +96,11 @@ struct MenuContent: View {
                     Button("Revoke \(remote.name) (\(remote.id.prefix(8))…)") { controller.revoke(remote) }
                 }
             }
+        }
+        if controller.accepting {
+            Button("Disconnect all") { controller.disconnectAll() }
+        } else {
+            Button("Accept remotes again") { controller.acceptRemotes() }
         }
         Divider()
         if hooksInstalled {

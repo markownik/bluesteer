@@ -10,7 +10,9 @@ import 'host_session.dart';
 import 'identity.dart';
 import 'link.dart';
 
-enum LinkState { connecting, connected, reconnecting, closed }
+/// `dismissed`: the Mac ended the link on purpose (`HostGoodbye`, "Disconnect all");
+/// nothing is retried until [HostConnection.reconnect].
+enum LinkState { connecting, connected, reconnecting, dismissed, closed }
 
 /// The connection to one paired Mac, kept alive across BLE drops: on a
 /// disconnect it reconnects with backoff (SPEC.md §6) and re-runs the
@@ -106,7 +108,7 @@ class HostConnection {
       return;
     }
     _session = session;
-    _envelopeSub = session.envelopes.listen(_envelopes.add, onError: (Object e) => _dropped(e));
+    _envelopeSub = session.envelopes.listen(_received, onError: (Object e) => _dropped(e));
     error = null;
     state.value = LinkState.connected;
   }
@@ -127,6 +129,32 @@ class HostConnection {
         _generation++; // an attempt in flight cannot succeed any more
       }
     }
+  }
+
+  void _received(Envelope e) {
+    if (e.hasHostGoodbye()) {
+      _dismissed(e.hostGoodbye.reason);
+      return;
+    }
+    _envelopes.add(e);
+  }
+
+  /// The Mac chose "Disconnect all": it stops accepting remotes, so scanning for
+  /// it would be pointless. Close the link and wait for the user (SPEC.md §6).
+  void _dismissed(String reason) {
+    if (_closed || state.value != LinkState.connected) return;
+    debugPrint('[link] dismissed: $reason');
+    error = reason.isEmpty ? 'Disconnected by ${host.name}' : reason;
+    state.value = LinkState.dismissed;
+    _generation++;
+    _teardown();
+  }
+
+  /// After a dismissal, tries again on the user's request.
+  void reconnect() {
+    if (_closed || state.value != LinkState.dismissed) return;
+    state.value = LinkState.reconnecting;
+    _reconnectLoop();
   }
 
   void _dropped(Object cause) {
