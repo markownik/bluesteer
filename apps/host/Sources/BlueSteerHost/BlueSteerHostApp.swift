@@ -28,7 +28,10 @@ struct BlueSteerHostApp: App {
                 exit(0)
             }
             return c
-        } catch { return nil }
+        } catch {
+            fputs("BlueSteer failed to start: \(error.localizedDescription)\n", stderr)
+            return nil
+        }
     }()
 
     var body: some Scene {

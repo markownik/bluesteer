@@ -17,6 +17,17 @@ public final class PairingStore {
         var remotes: [Remote]
     }
 
+    public enum Error: Swift.Error, LocalizedError {
+        /// The file exists but cannot be read: starting with a fresh key would
+        /// silently unpair every remote, so the host refuses to start instead.
+        case unreadable(URL, Swift.Error)
+        public var errorDescription: String? {
+            switch self {
+            case .unreadable(let url, let why): "\(url.path) is unreadable (\(why)); move it away to start fresh (every remote must pair again)"
+            }
+        }
+    }
+
     public let hostKey: NoiseKeyPair
     public private(set) var remotes: [Remote]
     private let url: URL
@@ -25,9 +36,14 @@ public final class PairingStore {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         url = directory.appendingPathComponent("pairing.json")
-        if let data = try? Data(contentsOf: url), let file = try? JSONDecoder().decode(File.self, from: data) {
-            hostKey = try NoiseKeyPair(privateKey: file.hostPrivateKey)
-            remotes = file.remotes
+        if FileManager.default.fileExists(atPath: url.path) {
+            do {
+                let file = try JSONDecoder().decode(File.self, from: try Data(contentsOf: url))
+                hostKey = try NoiseKeyPair(privateKey: file.hostPrivateKey)
+                remotes = file.remotes
+            } catch {
+                throw Error.unreadable(url, error)
+            }
         } else {
             hostKey = NoiseKeyPair()
             remotes = []
