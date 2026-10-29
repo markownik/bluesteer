@@ -12,6 +12,8 @@ import 'host_link.dart';
 /// until one has the right INFO id.
 class BleTransport implements Transport {
   bool _permissionsAsked = false;
+  /// The device id each host was last reached at, for a direct connect while backgrounded.
+  final _lastDeviceId = <String, String>{};
 
   @override
   Stream<bool> get powered async* {
@@ -23,7 +25,7 @@ class BleTransport implements Transport {
   /// connected (GATT during a scan is unreliable on some Android stacks) and
   /// resumes if it was the wrong Mac.
   @override
-  Future<Link> connect(String hostId, {required Duration timeout}) async {
+  Future<Link> connect(String hostId, {required Duration timeout, bool background = false}) async {
     if (!_permissionsAsked) {
       await UniversalBle.requestPermissions();
       _permissionsAsked = true;
@@ -31,6 +33,29 @@ class BleTransport implements Transport {
     final found = Completer<Link>();
     final tried = <String>{};
     var busy = false;
+
+    // Backgrounded on iOS the scan may stay silent for minutes, but a connect to a
+    // known peripheral is completed by the system the moment it advertises again:
+    // keep one pending next to the scan, which still covers a rotated address.
+    final direct = background ? _lastDeviceId[hostId] : null;
+    var directPending = false;
+    Future<void> tryDirect(String id) async {
+      directPending = true;
+      try {
+        debugPrint('[link] direct connect to $id pending');
+        final link = await HostLink.connect(BleDevice(deviceId: id, name: null), timeout: timeout, pending: timeout);
+        if (link.info.id == hostId && link.info.protocolVersion == protocolVersion && !found.isCompleted) {
+          debugPrint('[link] direct connect succeeded');
+          found.complete(link);
+          return;
+        }
+        await link.close();
+      } catch (e) {
+        debugPrint('[link] direct connect: $e');
+      } finally {
+        directPending = false;
+      }
+    }
 
     Future<void> tryDevice(BleDevice d) async {
       busy = true;
@@ -48,6 +73,10 @@ class BleTransport implements Transport {
           found.complete(link);
           return;
         }
+        if (found.isCompleted) {
+          await link.close();
+          return;
+        }
         await link.close(); // the wrong Mac, or we gave up meanwhile
       } catch (e) {
         debugPrint('[link] ${HostLink.advertisedName(d)}: $e');
@@ -62,8 +91,16 @@ class BleTransport implements Transport {
       }
     }
 
+    if (direct != null) tryDirect(direct);
     final sub = HostLink.scan().listen((d) {
-      if (busy || found.isCompleted || !tried.add(d.deviceId)) return;
+      if (busy || found.isCompleted) return;
+      if (directPending && d.deviceId == direct) {
+        // The scan got there first: cancel the pending connect and take the normal path.
+        debugPrint('[link] $direct seen by the scan, cancelling the direct connect');
+        UniversalBle.disconnect(direct!).catchError((_) {});
+        directPending = false;
+      }
+      if (!tried.add(d.deviceId)) return;
       tryDevice(d);
     }, onError: (Object e) {
       if (!found.isCompleted) found.completeError(e);
@@ -71,6 +108,12 @@ class BleTransport implements Transport {
     try {
       final link = await found.future.timeout(timeout);
       debugPrint('[link] found $hostId');
+      if (link is HostLink) _lastDeviceId[hostId] = link.device.deviceId;
+      if (direct != null && link is HostLink && link.device.deviceId != direct) {
+        try {
+          await UniversalBle.disconnect(direct); // the pending connect lost the race
+        } catch (_) {}
+      }
       return link;
     } finally {
       await sub.cancel();

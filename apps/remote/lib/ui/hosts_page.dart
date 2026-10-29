@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +19,7 @@ class HostsPage extends StatefulWidget {
   State<HostsPage> createState() => _HostsPageState();
 }
 
-class _HostsPageState extends State<HostsPage> {
+class _HostsPageState extends State<HostsPage> with WidgetsBindingObserver {
   final _status = <String, String>{};
   HostConnection? _connection;
   StreamSubscription<Uri>? _links;
@@ -26,12 +27,14 @@ class _HostsPageState extends State<HostsPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // bluesteer://pair?... links (QR alternative) open the pairing page directly.
     _links = AppLinks().uriLinkStream.listen((uri) => _pair(uri.toString()), onError: (_) {});
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _links?.cancel();
     _connection?.close();
     super.dispose();
@@ -51,6 +54,14 @@ class _HostsPageState extends State<HostsPage> {
     } finally {
       _pairingOpen = false;
     }
+  }
+
+  /// iOS delivers scan results slowly to a backgrounded app; the connection
+  /// switches to a pending direct connect while we are away (Android's
+  /// foreground service needs nothing).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _connection?.backgrounded = Platform.isIOS && state != AppLifecycleState.resumed;
   }
 
   Future<void> _connect(PairedHost host) async {

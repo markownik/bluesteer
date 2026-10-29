@@ -93,9 +93,9 @@ class HostLink implements Link {
   /// Connects, reads INFO, subscribes to TX. On any failure the device is
   /// disconnected again: the plugin's timeout is Dart-side only, so a connect
   /// it gave up on would otherwise keep going natively.
-  static Future<HostLink> connect(BleDevice device, {Duration timeout = connectTimeout}) async {
+  static Future<HostLink> connect(BleDevice device, {Duration timeout = connectTimeout, Duration? pending}) async {
     try {
-      return await _connect(device).timeout(timeout);
+      return await _connect(device, pending: pending).timeout(timeout);
     } catch (_) {
       try {
         await UniversalBle.disconnect(device.deviceId);
@@ -104,8 +104,10 @@ class HostLink implements Link {
     }
   }
 
-  static Future<HostLink> _connect(BleDevice device) async {
-    await device.connect();
+  /// [pending] keeps the connect request itself open that long (the plugin's
+  /// default is 60 s); on iOS the system completes it when the peripheral is seen.
+  static Future<HostLink> _connect(BleDevice device, {Duration? pending}) async {
+    await device.connect(timeout: pending);
     var mtu = 23;
     try {
       mtu = await device.requestMtu(517);

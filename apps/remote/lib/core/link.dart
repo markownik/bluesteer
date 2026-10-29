@@ -18,6 +18,8 @@ abstract interface class Transport {
   Stream<bool> get powered;
 
   /// Connects to the host with this instance id or throws; nothing stays
-  /// connected after a failure.
-  Future<Link> connect(String hostId, {required Duration timeout});
+  /// connected after a failure. [background] says the app is backgrounded on
+  /// iOS, where scan results arrive slowly: the transport then also keeps a
+  /// direct connect to the last known device pending for the whole window.
+  Future<Link> connect(String hostId, {required Duration timeout, bool background = false});
 }

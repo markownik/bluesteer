@@ -32,6 +32,8 @@ class HostConnection {
   /// Scan window for the first connect (the user is waiting) and for a reconnect attempt.
   static const firstConnectTimeout = Duration(seconds: 20);
   static const attemptTimeout = Duration(seconds: 8);
+  /// One long attempt instead while the app is backgrounded (iOS; see [Transport.connect]).
+  static const backgroundAttemptTimeout = Duration(minutes: 5);
 
   final Identity identity;
   final PairedHost host;
@@ -40,6 +42,9 @@ class HostConnection {
   final state = ValueNotifier<LinkState>(LinkState.connecting);
   /// Why we are reconnecting, for the UI.
   String? error;
+  /// Set by the app on iOS while it is not in the foreground: reconnect attempts
+  /// then use one long window with a pending direct connect.
+  bool backgrounded = false;
 
   final _envelopes = StreamController<Envelope>.broadcast();
   final _reconnected = StreamController<void>.broadcast();
@@ -162,9 +167,11 @@ class HostConnection {
       if (_closed) return;
       if (!_powered) continue;
       final generation = _generation;
-      debugPrint('[link] attempt $attempt');
+      final background = backgrounded;
+      debugPrint('[link] attempt $attempt${background ? ' (backgrounded)' : ''}');
       try {
-        final link = await _transport.connect(host.id, timeout: attemptTimeout);
+        final link = await _transport.connect(host.id,
+            timeout: background ? backgroundAttemptTimeout : attemptTimeout, background: background);
         if (generation != _generation) {
           // Abandoned while connecting (radio off, or close()): not ours any more.
           await link.close();

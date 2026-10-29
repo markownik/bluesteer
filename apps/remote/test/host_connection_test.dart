@@ -61,6 +61,41 @@ void main() {
     });
   });
 
+  test('backgrounded, a reconnect attempt is one long window with a direct connect', () {
+    fakeAsync((async) {
+      final link = newLink('mini');
+      final (connection, transport) = connected(async, link);
+      expect(transport.backgrounds, [false]);
+
+      connection.backgrounded = true;
+      link.failNextWrite = true;
+      connection.send(Envelope()..ping = (Ping()..nonce = Int64(1))).catchError((Object _) {});
+      async.flushMicrotasks();
+      expect(connection.state.value, LinkState.reconnecting);
+      expect(transport.attempts, hasLength(2));
+      expect(transport.backgrounds.last, isTrue);
+      expect(transport.timeouts.last, HostConnection.backgroundAttemptTimeout);
+      async.elapse(const Duration(seconds: 30));
+      expect(transport.attempts, hasLength(2), reason: 'the long window is still open');
+
+      // Back in the foreground the pending window completes like any other attempt.
+      connection.backgrounded = false;
+      final second = newLink('mini');
+      transport.attempts[1].complete(second);
+      async.flushMicrotasks();
+      expect(connection.state.value, LinkState.connected);
+
+      // The next drop in the foreground uses the short window again.
+      second.failNextWrite = true;
+      connection.send(Envelope()..ping = (Ping()..nonce = Int64(2))).catchError((Object _) {});
+      async.flushMicrotasks();
+      expect(transport.backgrounds.last, isFalse);
+      expect(transport.timeouts.last, HostConnection.attemptTimeout);
+      connection.close();
+      async.flushMicrotasks();
+    });
+  });
+
   test('a failed write drops the link and reconnects', () {
     fakeAsync((async) {
       final link = newLink('mini');

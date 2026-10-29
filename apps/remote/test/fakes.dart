@@ -69,6 +69,8 @@ class FakeTransport implements Transport {
   final bool initiallyOn;
   final power = StreamController<bool>.broadcast();
   final attempts = <Completer<Link>>[];
+  final timeouts = <Duration>[];
+  final backgrounds = <bool>[];
 
   @override
   Stream<bool> get powered async* {
@@ -78,9 +80,11 @@ class FakeTransport implements Transport {
 
   /// Like the real transport, a link that turns up after the window is closed.
   @override
-  Future<Link> connect(String hostId, {required Duration timeout}) {
+  Future<Link> connect(String hostId, {required Duration timeout, bool background = false}) {
     final c = Completer<Link>();
     attempts.add(c);
+    timeouts.add(timeout);
+    backgrounds.add(background);
     return c.future.timeout(timeout, onTimeout: () {
       c.future.then((link) => link.close());
       throw TimeoutException('scan window over', timeout);
