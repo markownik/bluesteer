@@ -34,6 +34,8 @@ Another Mac as the remote (same build, no app needed there):
 .build/debug/bluesteer connect       # attach this terminal; Ctrl-] detaches
 ```
 
+Release build of the host: `tools/make-dmg.sh --sign "Developer ID Application: <name>" --notarize <notarytool profile>` builds `build/BlueSteer.app` (hardened runtime, the `bluesteer` tool signed inside it) and a notarized, stapled `build/BlueSteer-<version>.dmg`; without the options it makes an ad-hoc signed DMG for local use. The profile comes from `xcrun notarytool store-credentials`.
+
 Tests: `swift test` in `apps/host` (including a 50-cycle in-process soak) and `packages/BlueSteerProtocol`, `dart test` in `packages/bluesteer_protocol_dart`, `flutter analyze` and `flutter test` in `apps/remote`, `tools/gen-proto.sh --check` for schema drift, `tools/interop-test.sh` for Swift↔Dart handshakes. `tools/soak/README.md` describes the long-run test with real phones and radio drops.
 
 ## Known limits (v1)

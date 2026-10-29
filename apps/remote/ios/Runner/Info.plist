@@ -19,6 +19,8 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>BlueSteer connects to your Mac over Bluetooth to show and control terminal sessions.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>BlueSteer can ask for Face ID before connecting to a Mac.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>BlueSteer scans the pairing QR code shown by the Mac.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

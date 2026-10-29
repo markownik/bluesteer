@@ -32,6 +32,17 @@ class _SettingsPageState extends State<SettingsPage> {
           textInputAction: TextInputAction.done,
           onSubmitted: widget.identity.setDeviceName,
         ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Unlock before connecting'),
+          subtitle: const Text('Face ID, fingerprint or the passcode each time a Mac is opened'),
+          value: widget.identity.requireUnlock,
+          onChanged: (on) async {
+            await widget.identity.setRequireUnlock(on);
+            if (mounted) setState(() {});
+          },
+        ),
         const SizedBox(height: 24),
         Text('BlueSteer Remote $appVersion', style: Theme.of(context).textTheme.bodySmall),
       ]),

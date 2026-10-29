@@ -12,20 +12,26 @@ const appVersion = '0.1.0';
 /// This device's Noise static key, its name, and the hosts it has paired
 /// with, kept in the platform secure storage (Keychain / Keystore).
 class Identity {
-  Identity._(this.keyPair, this._storage, this.hosts, this._deviceName, [this._ephemeral = false]);
+  Identity._(this.keyPair, this._storage, this.hosts, this._deviceName, [this._ephemeral = false, this._requireUnlock = false]);
 
   static const _keyField = 'remote_static_key';
   static const _hostsField = 'paired_hosts';
   static const _nameField = 'device_name';
+  static const _unlockField = 'require_unlock';
 
   final NoiseKeyPair keyPair;
   final FlutterSecureStorage _storage;
   final List<PairedHost> hosts;
   String _deviceName;
   final bool _ephemeral;
+  bool _requireUnlock;
 
   /// Shown by the host for this device ("Marek's iPhone"); sent in `RemoteHello`.
   String get deviceName => _deviceName;
+
+  /// Ask for Face ID / fingerprint / the passcode before connecting to a Mac
+  /// (a stolen phone is a terminal on the Mac otherwise; docs/threat-model.md).
+  bool get requireUnlock => _requireUnlock;
 
   /// An identity that touches no storage (tests).
   @visibleForTesting
@@ -47,7 +53,8 @@ class Identity {
         ? <PairedHost>[]
         : (jsonDecode(hostsJson) as List).map((e) => PairedHost.fromJson(e as Map<String, dynamic>)).toList();
     final name = await s.read(key: _nameField) ?? await _defaultDeviceName();
-    return Identity._(keyPair, s, hosts, name);
+    final unlock = await s.read(key: _unlockField) == 'true';
+    return Identity._(keyPair, s, hosts, name, false, unlock);
   }
 
   static Future<String> _defaultDeviceName() async {
@@ -65,6 +72,11 @@ class Identity {
     if (trimmed.isEmpty) return;
     _deviceName = trimmed;
     if (!_ephemeral) await _storage.write(key: _nameField, value: trimmed);
+  }
+
+  Future<void> setRequireUnlock(bool on) async {
+    _requireUnlock = on;
+    if (!_ephemeral) await _storage.write(key: _unlockField, value: on.toString());
   }
 
   /// Adds a host, or replaces the entry with the same id in place.

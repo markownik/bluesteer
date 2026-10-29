@@ -15,6 +15,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_secure_storage: ^11.2.0
+  local_auth: ^3.0.2
   mobile_scanner: ^7.4.2
   universal_ble: ^3.1.2
   xterm: ^4.0.0

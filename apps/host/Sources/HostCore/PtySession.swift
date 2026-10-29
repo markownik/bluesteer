@@ -28,7 +28,15 @@ public final class PtySession: EmulatedSession, TerminalSession {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let argv = [shell, "-l", "-c", "exec \"$@\"", "--"] + command
         let cargs = argv.map { strdup($0) } + [nil]
-        var env = ProcessInfo.processInfo.environment
+        // A login shell rebuilds the user's environment itself; it must not inherit
+        // ours, which may be a Claude Code session's (CLAUDE_CODE_*) or whatever
+        // launched the host. Keep only what a login needs.
+        let inherited = ProcessInfo.processInfo.environment
+        var env: [String: String] = [:]
+        for key in ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "__CF_USER_TEXT_ENCODING"] {
+            if let v = inherited[key] { env[key] = v }
+        }
+        env["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         env["BLUESTEER_SESSION"] = id.rawValue

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 
 import '../core/host_connection.dart';
 import '../core/identity.dart';
@@ -65,6 +66,10 @@ class _HostsPageState extends State<HostsPage> with WidgetsBindingObserver {
   }
 
   Future<void> _connect(PairedHost host) async {
+    if (widget.identity.requireUnlock && !await _unlock(host)) {
+      if (mounted) setState(() => _status[host.id] = 'Locked: unlock to connect');
+      return;
+    }
     await _connection?.close();
     setState(() => _status[host.id] = 'Looking for ${host.name}…');
     final connection = HostConnection(identity: widget.identity, host: host);
@@ -88,6 +93,16 @@ class _HostsPageState extends State<HostsPage> with WidgetsBindingObserver {
     } finally {
       await connection.close();
       if (_connection == connection) _connection = null;
+    }
+  }
+
+  /// The biometric gate from Settings: the OS prompt (biometrics or passcode) must pass.
+  Future<bool> _unlock(PairedHost host) async {
+    try {
+      return await LocalAuthentication().authenticate(localizedReason: 'Connect to ${host.name}');
+    } catch (e) {
+      debugPrint('[auth] $e');
+      return false;
     }
   }
 

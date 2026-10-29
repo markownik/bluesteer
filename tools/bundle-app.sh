@@ -37,5 +37,19 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSBluetoothAlwaysUsageDescription</key><string>BlueSteer uses Bluetooth to let your paired devices attach to terminal sessions on this Mac.</string>
 </dict></plist>
 PLIST
-codesign --force --sign "$IDENTITY" "$APP"
-echo "built $APP"
+# Hardened runtime on both executables (notarization requires it); the tool is
+# signed first because it is nested inside the bundle. Entitlements: Bluetooth
+# (for a future sandbox) and the exceptions the PTY helpers need.
+ENTITLEMENTS=$(mktemp -t bluesteer-entitlements).plist
+cat > "$ENTITLEMENTS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>com.apple.security.device.bluetooth</key><true/>
+</dict></plist>
+PLIST
+codesign --force --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP/Contents/MacOS/bluesteer"
+codesign --force --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
+rm -f "$ENTITLEMENTS"
+codesign --verify --strict --deep "$APP"
+echo "built $APP (signed: $IDENTITY)"

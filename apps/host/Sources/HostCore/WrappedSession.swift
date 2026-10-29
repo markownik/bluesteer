@@ -132,6 +132,10 @@ public final class WrapperSocketServer {
     private func accept() {
         let fd = Darwin.accept(listenFD, nil, nil)
         guard fd >= 0 else { return }
+        // Only this user's processes may drive sessions or report hook events; the
+        // kernel vouches for the peer (a shared token would be readable by them anyway).
+        var uid = uid_t(), gid = gid_t()
+        guard getpeereid(fd, &uid, &gid) == 0, uid == geteuid() else { close(fd); return }
         LocalSocket.harden(fd)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         connections[fd] = (WrapperFrameParser(), nil, source)
