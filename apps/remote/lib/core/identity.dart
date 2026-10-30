@@ -6,7 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Version reported in `RemoteHello`.
-const appVersion = '0.1.0';
+const appVersion = '1.0.0';
 
 /// This device's Noise static key, its name, and the hosts it has paired
 /// with, kept in the platform secure storage (Keychain / Keystore).

@@ -13,7 +13,7 @@
 import Foundation
 
 public enum HostInfo {
-    public static let version = "0.0.1"
+    public static let version = "1.0.0"
     /// Directory for the wrapper/hook socket and local state.
     public static var supportDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
