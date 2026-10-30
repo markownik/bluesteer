@@ -43,7 +43,7 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Or `flutter run` with the phone attached. Release builds are signed with the debug key until you add your own keystore (`docs/store/beta-checklist.md` has the steps for Play).
+Or `flutter run` with the phone attached. Release builds are signed with the debug key until you add your own keystore (the standard Flutter release-signing set-up).
 
 ### Remote on iPhone
 
@@ -95,7 +95,7 @@ The same steps, in the apps' own words, are at https://bluesteer.devland.app/sup
 - `apps/host/` macOS host app and `bluesteer` command line tool (Swift)
 - `apps/remote/` remote app (Flutter: iOS, Android, macOS; Windows later)
 - `tools/` development tools: PTY recorder, bandwidth bench, BLE throughput bench, iPhone UI driver
-- `docs/` architecture overview, phase results, threat model, store material
+- `docs/` architecture overview, phase results, threat model
 
 ## License
 
