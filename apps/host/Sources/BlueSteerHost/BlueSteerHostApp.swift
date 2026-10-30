@@ -120,6 +120,7 @@ struct MenuContent: View {
             }))
             .disabled(!LoginItem.isAvailable)
         Button("Show audit log") { NSWorkspace.shared.open(AuditLog.shared.url) }
+        Button("Support BlueSteer…") { NSWorkspace.shared.open(URL(string: "https://github.com/sponsors/markownik")!) }
     }
 
     @State private var menuRefresh = 0
