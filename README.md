@@ -8,9 +8,10 @@ Status: Phases 0–4 of `docs/PLAN.md` work end to end on macOS + Android + iOS:
 
 ## Get it
 
-- **BlueSteer Host** (macOS 14+, menu bar): a signed and notarized build is sold as a one-time purchase with free updates within version 1 (checkout opens with 1.0; see https://bluesteer.devland.app). Everything needed to build it yourself is below.
+- **BlueSteer Host** (macOS 14+, menu bar): free. The signed and notarized DMG is published with each release at https://github.com/markownik/bluesteer/releases, with its SHA-256 in the release notes. Everything needed to build it yourself is below.
 - **BlueSteer Remote** (iPhone, Android): free on the App Store and Google Play once published; buildable from this repository too.
 - **Another Mac as the remote:** the `bluesteer` command line tool that ships inside the host app.
+- **Support the project:** BlueSteer is free software; if it is useful to you, https://github.com/sponsors/markownik funds the developer accounts, the test devices and the next features.
 
 Website https://bluesteer.devland.app · [get started and support](https://bluesteer.devland.app/support) · [security overview](https://bluesteer.devland.app/security) · [privacy](https://bluesteer.devland.app/privacy) · [terms](https://bluesteer.devland.app/terms) · support@devland.app
 
@@ -31,7 +32,7 @@ tools/bundle-app.sh              # builds build/BlueSteer.app (release, ad-hoc s
 open build/BlueSteer.app         # menu-bar icon; macOS asks for Bluetooth once
 ```
 
-An ad-hoc signed app runs on the Mac that built it (macOS trusts what you build locally). To hand the app to other Macs it must be signed with a Developer ID certificate and notarized: `tools/make-dmg.sh --sign "Developer ID Application: <name> (<team id>)" --notarize <notarytool profile>` produces a notarized, stapled `build/BlueSteer-<version>.dmg` (the profile comes from `xcrun notarytool store-credentials`). During development `cd apps/host && swift build && .build/debug/BlueSteerHost` runs the bare binary (no app icon, no login item, prints link events on stderr).
+An ad-hoc signed app runs on the Mac that built it. `tools/make-dmg.sh --sign "Developer ID Application: <name> (<team id>)" --notarize <notarytool profile>` produces the notarized, stapled `build/BlueSteer-<version>.dmg` that the releases ship. During development `cd apps/host && swift build && .build/debug/BlueSteerHost` runs the bare binary (no app icon, no login item, prints link events on stderr).
 
 ### Remote on Android
 
