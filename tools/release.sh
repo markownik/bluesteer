@@ -9,8 +9,8 @@
 #   3. writes build/BlueSteer-<version>.dmg.sha256, the notarization log
 #      (build/BlueSteer-<version>-notarization.json) and the release notes
 #      (build/release-notes-<version>.md);
-#   4. tags v<version> (annotated) and pushes the tag to origin and, when it
-#      exists, to the `github` remote (the public mirror);
+#   4. tags v<version> (annotated), pushes the tag to origin and refreshes the
+#      public GitHub mirror with tools/mirror/mirror.sh (filtered history);
 #   5. creates the GitHub Release with the DMG attached: through `gh` when it is
 #      installed and logged in, otherwise through the REST API with GITHUB_TOKEN
 #      from the environment (a token with `contents: write` on the mirror).
@@ -74,7 +74,7 @@ if [ "$SKIP_TAG" = 0 ]; then
     git tag -a "$TAG" -m "BlueSteer $VERSION"
   fi
   git push origin "$TAG"
-  if git remote | grep -qx github; then git push github main "$TAG"; fi
+  if [ -x tools/mirror/mirror.sh ]; then tools/mirror/mirror.sh; fi
 fi
 
 # 5. GitHub Release on the mirror

@@ -1,6 +1,6 @@
 # Architecture overview
 
-The full plan, including research findings and phases, is in `PLAN.md`. This page is the short version.
+This page is the short version of the design; `phase0-results.md` has what was measured in each phase.
 
 ```
 Mac (Host)                                              Phone / laptop (Remote)

@@ -14,7 +14,7 @@
 # soak-report.py turns it into report.md with PASS/FAIL lines.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-MINUTES=120; DROPS=phone+mac; SERIAL=ADB-SERIAL; IOS_UDID=""; HOST_LOG=""; TYPE_WORKLOAD=1
+MINUTES=120; DROPS=phone+mac; SERIAL=${ANDROID_SERIAL:-}; IOS_UDID=""; HOST_LOG=""; TYPE_WORKLOAD=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --host-log) HOST_LOG=$2; shift 2 ;;
@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$HOST_LOG" ] || { echo "--host-log is required"; exit 64; }
-A() { adb -s "$SERIAL" "$@"; }
+A() { adb ${SERIAL:+-s "$SERIAL"} "$@"; }
 IOS() { UDID=$IOS_UDID "$here/../ios-ui-driver/driver.sh" "$@"; }
 HOST_PID=$(pgrep -x BlueSteerHost | head -1)
 [ -n "$HOST_PID" ] || { echo "no BlueSteerHost running"; exit 1; }
