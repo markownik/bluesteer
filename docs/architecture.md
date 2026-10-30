@@ -1,6 +1,6 @@
 # Architecture overview
 
-This page is the short version of the design; `phase0-results.md` has what was measured in each phase.
+This page is the short version of the design.
 
 ```
 Mac (Host)                                              Phone / laptop (Remote)

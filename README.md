@@ -4,7 +4,7 @@ Offline Bluetooth Low Energy terminal bridge for Claude Code, GitHub Copilot CLI
 
 A **Host** app on your Mac runs the agent session in a pseudo-terminal and advertises it over BLE. A **Remote** app on a phone or another computer, with no internet connection at all, attaches to that session as a real terminal: it sees the screen and types into it. Nothing goes through a relay server and nothing leaves the room.
 
-Status: the engineering phases 0–4 (measured in `docs/phase0-results.md`) work end to end on macOS + Android + iOS: pair by QR code or by comparing a 6-digit code, open a login shell on the Mac from the phone, type into it, scroll back through its history, mirror a terminal you started yourself with `bluesteer run`, see when Claude is waiting for input or for permission, lose and regain the link without doing anything (a few seconds after the radio is back), and keep your sessions across a restart of the host app. Another Mac can be a remote too (`bluesteer connect`). In v1 the remote opens plain shells only; you run `claude` or `copilot` inside them. Packaging and the store submissions (Phase 5) are in progress.
+Status: version 1.0 works end to end on macOS + Android + iOS: pair by QR code or by comparing a 6-digit code, open a login shell on the Mac from the phone, type into it, scroll back through its history, mirror a terminal you started yourself with `bluesteer run`, see when Claude is waiting for input or for permission, lose and regain the link without doing anything (a few seconds after the radio is back), and keep your sessions across a restart of the host app. Another Mac can be a remote too (`bluesteer connect`). In v1 the remote opens plain shells only; you run `claude` or `copilot` inside them. The App Store and Google Play submissions of the phone apps are in progress.
 
 ## Get it
 
@@ -95,7 +95,7 @@ The same steps, in the apps' own words, are at https://bluesteer.devland.app/sup
 - `apps/host/` macOS host app and `bluesteer` command line tool (Swift)
 - `apps/remote/` remote app (Flutter: iOS, Android, macOS; Windows later)
 - `tools/` development tools: PTY recorder, bandwidth bench, BLE throughput bench, iPhone UI driver
-- `docs/` architecture overview, phase results, threat model
+- `docs/` architecture overview, threat model
 
 ## License
 
